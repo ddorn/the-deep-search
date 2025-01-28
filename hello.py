@@ -6,10 +6,12 @@ import subprocess
 from typing import Annotated
 import typer
 import asyncio
-import tqdm
+from tqdm import tqdm
 from pathlib import Path
-from pydantic import BaseModel, Field, AliasPath
+from pydantic import BaseModel, Field, AliasPath, AliasChoices
 from rich import print as rprint
+from openai import AsyncClient
+import tempfile
 
 app = typer.Typer()
 
@@ -18,7 +20,7 @@ class Chapter(BaseModel):
     start_time: float
     end_time: float
     # Title is loaded from chapter['tags']['title']
-    title: Annotated[str, Field(alias=AliasPath("tags", "title"))]
+    title: Annotated[str, Field(alias=AliasChoices("title", AliasPath("tags", "title")))] = ""
 
 
 class Podcast(BaseModel):
@@ -37,82 +39,176 @@ async def gather_metadata(podcast: Path) -> Podcast:
     if stderr:
         rprint(stderr.decode())
     if process.returncode != 0:
-        print("megafail")
         raise RuntimeError("ffprobe failed")
 
-    # Load the chapters
     return Podcast.model_validate_json(stdout)
 
 
-async def run_in_parrallel(tasks, max_concurrent: int):
-    semaphore = asyncio.Semaphore(max_concurrent)
-    progress = tqdm.tqdm(total=len(tasks))
+def ensure_chapters_cover_podcast(podcast: Podcast) -> Podcast:
+    """Add chapters for parts that are not covered by chapters."""
 
-    async def run(task):
-        async with semaphore:
-            result = await task
-            progress.update()
-            return result
-
-    return await asyncio.gather(*[run(task) for task in tasks])
-
-
-@app.command()
-def main(podcast_dir: Path, debug: bool = False):
-    """
-    This script will take a directory of podcast files and output a directory of their transcription as text files.
-    """
-
-    asyncio.run(true_main(podcast_dir, debug))
-
-
-async def true_main(podcast_dir: Path, debug: bool = False):
-    output = podcast_dir / "raw_transcriptions"
-    podcasts = sorted((podcast_dir.glob("*.mp3")), reverse=True)
-
-    tasks = [process_one(podcast) for podcast in podcasts]
-
-    if debug:
-        max_concurrent = 1
-    else:
-        max_concurrent = os.cpu_count() or 1
-
-    await run_in_parrallel(tasks, max_concurrent=max_concurrent)
-
-
-async def process_one(podcast: Path):
-    rprint(f"Processing {podcast}")
-    metadata = await gather_metadata(podcast)
-    rprint(metadata)
-
-    # Add chapters for parts that are not covered by chapters
     current_time = 0.0
     chapters = []
-    for chapter in metadata.chapters:
+    for chapter in podcast.chapters:
         if chapter.start_time > current_time + 1:
             chapters.append(
                 Chapter(
                     start_time=current_time,
                     end_time=chapter.start_time,
-                    title="Untitled part",
                 )
             )
         chapters.append(chapter)
         current_time = chapter.end_time
 
-    if current_time < metadata.duration:
+    if current_time < podcast.duration:
         chapters.append(
             Chapter(
                 start_time=current_time,
-                end_time=metadata.duration,
-                title="Untitled part",
+                end_time=podcast.duration,
             )
         )
-    metadata.chapters = chapters
 
-    rprint(metadata)
-    # for chapter in chapters:
-        # print(f"  {chapter.title} ({chapter.start} - {chapter.end})")
+    return podcast.model_copy(update={"chapters": chapters})
+
+
+async def run_in_parrallel(tasks, max_concurrent: int, progress=True):
+    """Run async tasks in parallel with a maximum concurrency and a progress bar."""
+    semaphore = asyncio.Semaphore(max_concurrent)
+
+    if progress:
+        bar = tqdm(total=len(tasks))
+
+    async def run(task):
+        async with semaphore:
+            result = await task
+            if progress:
+                bar.update()
+            return result
+
+    try:
+        return await asyncio.gather(*[run(task) for task in tasks])
+    finally:
+        if progress:
+            bar.close()
+
+
+@app.command()
+def main(podcast_dir: Path, debug: bool = False, jobs: int = 20, n: int = 1):
+    """
+    This script will take a directory of podcast files and output a directory of their transcription as text files.
+    """
+
+    asyncio.run(true_main(podcast_dir, debug=debug, jobs=jobs, n=n))
+
+
+async def true_main(podcast_dir: Path, debug: bool = False, jobs: int = 20, n: int = 1):
+    podcasts = sorted((podcast_dir.glob("*.mp3")), reverse=True)
+
+    if n < 0:
+        n = len(podcasts)
+
+    tasks = [process_one(podcast) for podcast in podcasts[:n]]
+
+    if debug:
+        jobs = 1
+
+    await run_in_parrallel(tasks, max_concurrent=jobs)
+
+
+async def process_one(podcast: Path):
+    output = podcast.with_suffix(".txt")
+    if output.exists():
+        return
+
+    rprint(f"Processing {shlex.quote(str(podcast))}")
+
+    metadata = await gather_metadata(podcast)
+    metadata = ensure_chapters_cover_podcast(metadata)
+
+    chapters_folders = podcast.with_name(podcast.stem + "_chapters")
+    chapter_paths = [chapters_folders / f"{i:02d}.mp3" for i in range(len(metadata.chapters))]
+    transcripts_paths = [chapter_path.with_suffix(".txt") for chapter_path in chapter_paths]
+    chapters_folders.mkdir(exist_ok=True)
+
+    for chapter, audio, transcript in zip(
+        metadata.chapters, chapter_paths, transcripts_paths, strict=True
+    ):
+        if transcript.exists():
+            continue
+        await split_chapter(podcast, chapter, audio)
+        await transcribe(audio, transcript)
+        # audio.unlink()
+
+    full_text = ""
+    for chapter, transcript_path in zip(metadata.chapters, transcripts_paths):
+        if chapter.title:
+            full_text += f"## {chapter.title}\n\n"
+        full_text += transcript_path.read_text() + "\n\n"
+
+    output.write_text(full_text)
+
+
+async def split_chapter(podcast: Path, chapter: Chapter, chapter_path: Path):
+    cmd = f"ffmpeg -loglevel quiet -y -i {shlex.quote(str(podcast))} -ss {chapter.start_time} -to {chapter.end_time} -codec:a libmp3lame -qscale:a 9 {shlex.quote(str(chapter_path))}"
+    process = await asyncio.create_subprocess_shell(cmd)
+    await process.communicate()
+    if process.returncode != 0:
+        raise RuntimeError("ffmpeg failed")
+
+
+client = AsyncClient()
+
+
+async def transcribe(audio: Path, text_output: Path):
+    if text_output.exists():
+        return
+
+    file_size = audio.stat().st_size
+
+    # Check that the file is less than 25Mb
+    if file_size > 25 * 1024 * 1024:
+        raise ValueError("File is too large")
+
+
+    print(f"Transcribing {audio} ({file_size / 1024 / 1024:.2f}Mb)")
+
+    response = await client.audio.transcriptions.create(
+        model="whisper-1",
+        file=audio.open("rb"),
+    )
+
+    text_output.write_text(response.text)
+
+
+
+@app.command()
+def compress(directory: Path, output: Path):
+    """
+    Compress all mp3 files in a directory.
+    """
+
+    output.mkdir(exist_ok=True)
+    tasks = [compress_one(file, output / file.name) for file in directory.glob("*.mp3")]
+
+    jobs = os.cpu_count()
+    if jobs is None:
+        jobs = 1
+    else:
+        jobs = jobs // 1.5
+
+    asyncio.run(run_in_parrallel(tasks, max_concurrent=jobs))
+
+
+async def compress_one(path: Path, output: Path):
+    if output.exists():
+        return
+
+    cmd = f"ffmpeg -loglevel quiet -y -i {shlex.quote(str(path))} -codec:a libmp3lame -qscale:a 9 {shlex.quote(str(output))}"
+    process = await asyncio.create_subprocess_shell(cmd)
+    await process.communicate()
+    if process.returncode != 0:
+        raise RuntimeError("ffmpeg failed")
+
 
 
 if __name__ == "__main__":

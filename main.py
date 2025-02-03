@@ -1,9 +1,13 @@
 #!/usr/bin/env -S uv run --frozen
 
+import json
 import os
 import shlex
+import shutil
 import subprocess
+import sys
 from typing import Annotated
+import httpx
 import typer
 import asyncio
 from tqdm import tqdm
@@ -12,8 +16,13 @@ from pydantic import BaseModel, Field, AliasPath, AliasChoices
 from rich import print as rprint
 from openai import AsyncClient
 import tempfile
+from joblib import Parallel, delayed
+import deepgram
+import jqpy
 
-app = typer.Typer()
+from runner import Parallel as MyParallel
+
+app = typer.Typer(no_args_is_help=True, add_completion=False)
 
 
 class Chapter(BaseModel):
@@ -91,6 +100,7 @@ async def run_in_parrallel(tasks, max_concurrent: int, progress=True):
         if progress:
             bar.close()
 
+'''
 
 @app.command()
 def main(podcast_dir: Path, debug: bool = False, jobs: int = 20, n: int = 1):
@@ -139,7 +149,7 @@ async def process_one(podcast: Path):
         await transcribe(audio, transcript)
         # audio.unlink()
 
-    full_text = ""
+    full_text = f"# {metadata.title}\n\n"
     for chapter, transcript_path in zip(metadata.chapters, transcripts_paths):
         if chapter.title:
             full_text += f"## {chapter.title}\n\n"
@@ -154,41 +164,13 @@ async def split_chapter(podcast: Path, chapter: Chapter, chapter_path: Path):
     await process.communicate()
     if process.returncode != 0:
         raise RuntimeError("ffmpeg failed")
+'''
 
-
-client = AsyncClient()
-
-
-async def transcribe(audio: Path, text_output: Path):
-    if text_output.exists():
-        return
-
-    file_size = audio.stat().st_size
-
-    # Check that the file is less than 25Mb
-    if file_size > 25 * 1024 * 1024:
-        raise ValueError("File is too large")
-
-
-    print(f"Transcribing {audio} ({file_size / 1024 / 1024:.2f}Mb)")
-
-    response = await client.audio.transcriptions.create(
-        model="whisper-1",
-        file=audio.open("rb"),
-    )
-
-    text_output.write_text(response.text)
-
-
-
-@app.command()
+@app.command(no_args_is_help=True)
 def compress(directory: Path, output: Path):
     """
     Compress all mp3 files in a directory.
     """
-
-    output.mkdir(exist_ok=True)
-    tasks = [compress_one(file, output / file.name) for file in directory.glob("*.mp3")]
 
     jobs = os.cpu_count()
     if jobs is None:
@@ -196,18 +178,142 @@ def compress(directory: Path, output: Path):
     else:
         jobs = jobs // 1.5
 
-    asyncio.run(run_in_parrallel(tasks, max_concurrent=jobs))
+    output.mkdir(exist_ok=True)
+
+    Parallel(n_jobs=jobs)(
+        delayed(compress_one)(file, output / file.name) for file in directory.glob("*.mp3")
+    )
 
 
-async def compress_one(path: Path, output: Path):
+@app.command(no_args_is_help=True)
+def compress_one(path: Path, output: Path = None):
+
+    if output is None:
+        output = Path(tempfile.mktemp(suffix=".mp3"))
+        compress_one(path, output)
+        shutil.move(output, path)
+        return
+
     if output.exists():
         return
 
     cmd = f"ffmpeg -loglevel quiet -y -i {shlex.quote(str(path))} -codec:a libmp3lame -qscale:a 9 {shlex.quote(str(output))}"
-    process = await asyncio.create_subprocess_shell(cmd)
-    await process.communicate()
+    print(cmd)
+    process = subprocess.run(cmd, shell=True)
     if process.returncode != 0:
+        print(process.stdout, process.stderr)
+        print(process.stderr, process.stderr)
         raise RuntimeError("ffmpeg failed")
+
+
+@app.command(no_args_is_help=True)
+def dl_and_compress(rss_feed: str, directory: Path):
+    """
+    Download all mp3 files in a directory and compress them.
+    """
+
+    # cmd = f'pnpx podcast-dl --url "{shlex.quote(rss_feed)}" --dir "{shlex.quote(str(directory))}"'
+    cmd = ["pnpx", "podcast-dl", "--url", rss_feed, "--out-dir", str(directory), "--threads", "3"]
+    exec_after = [
+        sys.executable,
+        __file__,
+        "compress-one",
+        "EPISODEtemplatEVAR",
+    ]
+    cmd = cmd + ["--exec", shlex.join(exec_after)]
+    cmd_as_str = shlex.join(cmd)
+    cmd_as_str = cmd_as_str.replace("EPISODEtemplatEVAR", "{{episode_path}}")
+
+    rprint(cmd_as_str)
+    subprocess.run(cmd_as_str, shell=True, check=True)
+
+
+@app.command(no_args_is_help=True)
+def cost(directory: Path, cost_per_minute: float = 0.006):
+    """Estimate the cost of transcribing all files in a directory."""
+
+    tasks = [gather_metadata(file) for file in directory.glob("*.mp3")]
+
+    async def gather_all_metadata(tasks):
+        return await asyncio.gather(*tasks)
+
+    metadata: list[Podcast] = asyncio.run(gather_all_metadata(tasks))
+
+    total_duration = sum(podcast.duration for podcast in metadata) / 60  # in minutes
+
+    cost = total_duration * cost_per_minute
+    rprint(f"Total duration: {total_duration / 60:.2f} hours")
+    rprint(f"Estimated cost: ${cost:.2f} at ${cost_per_minute}/minute")
+
+
+deepgram_client = deepgram.DeepgramClient()
+
+options = deepgram.PrerecordedOptions(
+    model="nova-2",
+    summarize="v2",
+    topics=True,
+    intents=True,
+    detect_entities=True,
+    smart_format=True,
+    punctuate=True,
+    paragraphs=True,
+    diarize=True,
+    # sentiment=True,
+    language="en",
+)
+
+
+@app.command(no_args_is_help=True)
+def deepgram_all(directory: Path, n: int = 1, jobs: int = 1):
+    """
+    Transcribe all files in a directory using Deepgram.
+    """
+
+    files = sorted(directory.glob("*.mp3"), reverse=True)
+    files = [file for file in files if not file.with_suffix(".json").exists()]
+    files = files[:n]
+    rprint(files)
+
+    runner = MyParallel(n_jobs=jobs)
+    for file in files:
+        runner.add(deepgram_one, title=file.stem)(file)
+
+    results = runner.run()
+    for file, result in zip(files, results):
+        if result.is_error:
+            rprint(f"[red]Error processing {file}[/red]")
+            rprint(f"[red]{result.unwrap_error()}[/red]")
+
+
+@app.command(no_args_is_help=True)
+def deepgram_one(file: Path):
+    output = file.with_suffix(".json")
+    if output.exists():
+        return
+
+    rprint(f"Transcribing '{file}'")
+    with open(file, "rb") as audio:
+        source = {"buffer": audio}
+
+        response: deepgram.PrerecordedResponse = deepgram_client.listen.rest.v("1").transcribe_file(
+            source, options, timeout=httpx.Timeout(100, connect=10)
+        )
+
+    output.write_text(response.to_json())
+    rprint(f"Transcribed '{file}'")
+
+
+@app.command(no_args_is_help=True)
+def transcript(directory: Path):
+    """
+    Convert the transcriptions in a directory to markdown.
+    """
+
+    for file in tqdm(list(directory.glob("*.json"))):
+        data = json.loads(file.read_text())
+        transcript = data["results"]["channels"][0]["alternatives"][0]["transcript"]
+        with open(file.with_suffix(".md"), "w") as f:
+            f.write(transcript)
 
 
 

@@ -1,5 +1,6 @@
 #!/usr/bin/env -S uv run --frozen
 
+import itertools
 import json
 import os
 import shlex
@@ -403,54 +404,66 @@ def to_sql(directory: Path):
     cursor.commit()
 
 
+def get_all_ids(milvus, collection_name) -> set[str]:
+    in_milvus = set()
+    iterator = milvus.query_iterator(collection_name, output_fields=["id"])
+    while True:
+        res = iterator.next()
+        if len(res) == 0:
+            break
+
+        in_milvus.update(item["id"] for item in res)
+
+    iterator.close()
+    return in_milvus
+
+
 @app.command(no_args_is_help=True)
 def to_milvus(directory: Path):
     """
-    Add all transcriptions in a directory to a Milvus database.
+    store the embeddings of all transcriptions from the sql database to milvus.
     """
 
     milvus, collection_name = mk_milvus(directory)
     cursor = mk_sql(directory)
 
-    rprint(f"Stats for {collection_name}", milvus.get_collection_stats(collection_name))
+    rprint("Connection to Milvus and SQL established :tada:")
 
-    def process_one(file: Path):
-        with open(file) as f:
-            transcript = json.load(f)
+    in_milvus = get_all_ids(milvus, collection_name)
+    in_sql = set(data[0] for data in cursor.execute("SELECT hash FROM paragraphs").fetchall())  # fetchall returns (hash,)
 
-        paragraphs = transcript["results"]["channels"][0]["alternatives"][0]["paragraphs"]["paragraphs"]
-        paragraph_texts = [" ".join([sentence["text"] for sentence in paragraph["sentences"]]) for paragraph in paragraphs]
-        unique_paragraphs = { txt_hash(p): p for p in paragraph_texts }
+    to_insert = in_sql - in_milvus
+    rprint(f"SQL: {len(in_sql)} Milvus: {len(in_milvus)} To insert: {len(to_insert)}")
 
-        response = milvus.get(collection_name, list(unique_paragraphs.keys()), output_fields=["id"])
-        existing_ids: set[str] = { item["id"] for item in response }
-        paragraphs_to_add = { k: v for k, v in unique_paragraphs.items() if k not in existing_ids }
+    if len(to_insert) == 0:
+        rprint("[green]Milvus is up to date!")
+        return
 
-        if not paragraphs_to_add:
-            return
+    def process_one(batch: list[int]):
+        paragraphs = cursor.execute("SELECT hash, text FROM paragraphs WHERE hash IN (%s)" % ",".join("?" * len(batch)), batch).fetchall()
+        paragraphs = {hash_: text for hash_, text in paragraphs}
 
-        n_words = sum(len(p.split()) for p in paragraphs_to_add.values())
-        runner.progress.log(f"Embedding {len(paragraphs_to_add)} paragraphs ({n_words} words) for '{file.stem}'. Skipping {len(existing_ids)} existing.")
-        embeddings = get_embedding(list(paragraphs_to_add.values()))
+        n_words = sum(len(p.split()) for p in paragraphs.values())
+        runner.progress.log(f"Embedding {len(paragraphs)} paragraphs ({n_words} words)")
+        embeddings = get_embedding(list(paragraphs.values()))
 
         data_to_insert = [
             {
                 "id": id,
                 "vector": embedding,
             }
-            for id, embedding in zip(paragraphs_to_add.keys(), embeddings)
+            for id, embedding in zip(paragraphs.keys(), embeddings)
         ]
-        runner.progress.log(f"Inserting {len(data_to_insert)} embeddings for {file}")
         milvus.insert(collection_name, data_to_insert)
 
-
-    runner = MyParallel(n_jobs=1)
-
-    for file in sorted(directory.glob("*.json"), reverse=True):
-        runner.add(process_one, title=file.stem)(file)
-        break
+    runner = MyParallel(progress_per_task=False, show_threads=False)
+    for batch in itertools.batched(to_insert, 1000):
+        runner.add(process_one)(batch)
 
     runner.run()
+    cursor.close()
+
+
 
 
 

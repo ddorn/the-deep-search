@@ -5,7 +5,6 @@ import json
 import os
 import shlex
 import shutil
-import sqlite3
 import subprocess
 import sys
 from typing import Annotated
@@ -19,11 +18,10 @@ from rich import print as rprint
 import tempfile
 from joblib import Parallel, delayed
 import deepgram
-from pymilvus import MilvusClient
 import openai
-import hashlib
 
 
+import databases
 from runner import Parallel as MyParallel
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
@@ -310,11 +308,10 @@ def transcript(directory: Path):
         with open(file.with_suffix(".txt"), "w") as f:
             f.write(transcript)
 
-EMBDEDDING_DIMENSIONS = 1536
 
 def get_embedding(text: list[str]) -> list[list[float]]:
     response = openai.embeddings.create(
-        dimensions=EMBDEDDING_DIMENSIONS,
+        dimensions=databases.EMBDEDDING_DIMENSIONS,
         model="text-embedding-3-small",
         input=text,
     )
@@ -327,108 +324,33 @@ def get_embedding(text: list[str]) -> list[list[float]]:
 
 
 
-def txt_hash(text: str) -> str:
-    return hashlib.sha256(text.encode()).hexdigest()
-
-
-def mk_milvus(directory: Path):
-
-    db_file = directory / "milvus.db"
-    client = MilvusClient(str(db_file))
-    collection_name = "podcasts"
-    # The primary key is the hash of the text
-    client.create_collection(collection_name,
-                            dimension=EMBDEDDING_DIMENSIONS,
-                            id_type="string",
-                            max_length=len(txt_hash(""))
-    )
-
-    return client, collection_name
-
-
-def mk_sql(directory: Path):
-    db_file = directory / "transcripts.db"
-    conn = sqlite3.connect(str(db_file))
-    c = conn.cursor()
-    """
-    Shema:
-
-    Table: paragraphs
-        - links to the podcast in which it is
-        - id
-        - hash (sha256 of the text)
-        - text
-        - order in the podcast
-
-    Table: podcasts
-        - id
-        - title
-        - filename
-    """
-
-    c.execute("CREATE TABLE IF NOT EXISTS podcasts (id INTEGER PRIMARY KEY, title TEXT, filename TEXT)")
-    c.execute("CREATE TABLE IF NOT EXISTS paragraphs (id INTEGER PRIMARY KEY, podcast_id INTEGER, hash TEXT, text TEXT, paragraph_order INTEGER)")
-
-    return conn
-
-
 @app.command(no_args_is_help=True)
 def to_sql(directory: Path):
     """
     Add all transcriptions in a directory to a SQLite database.
     """
 
-    cursor = mk_sql(directory)
+    db = databases.Databases(directory, milvus=False)
 
     for file in tqdm(list(directory.glob("*.json"))):
         with open(file) as f:
             transcript = json.load(f)
 
         # Add the podcast to the sql database, if it doesn't exist
-        res = cursor.execute("SELECT id FROM podcasts WHERE filename = ?", (file.stem,))
-        podcast_id = res.fetchone()
-        if podcast_id is None:
-            metadata = gather_metadata(file.with_suffix(".mp3"))
-            res = cursor.execute("INSERT INTO podcasts (title, filename) VALUES (?, ?)", (metadata.title, file.stem))
-            podcast_id = res.lastrowid
-        else:
+        if db.get_podcast_by_filename(file.stem) is not None:
+            # Podcast already exists
             continue
+        else:
+            metadata = gather_metadata(file.with_suffix(".mp3"))
+            podcast_id = db.add_podcast_sql(databases.Podcast(id=None, title=metadata.title, filename=file.stem))
 
         paragraphs = transcript["results"]["channels"][0]["alternatives"][0]["paragraphs"]["paragraphs"]
         paragraph_texts = [" ".join([sentence["text"] for sentence in paragraph["sentences"]]) for paragraph in paragraphs]
 
-        cursor.executemany("INSERT INTO paragraphs (podcast_id, hash, text, paragraph_order) VALUES (?, ?, ?, ?)",
-            [(podcast_id, txt_hash(p), p, i) for i, p in enumerate(paragraph_texts)]
-        )
+        db.add_paragraphs_sql([ databases.Paragraph.from_text(p, podcast_id, i) for i, p in enumerate(paragraph_texts) ])
 
-    cursor.commit()
+    db.sql.commit()
 
-
-class Paragraph(BaseModel):
-    podcast_id: int
-    hash: str
-    text: str
-    paragraph_order: int
-
-
-class PodcastSQL(BaseModel):
-    id: int
-    title: str
-    filename: str
-
-
-def get_all_ids(milvus, collection_name) -> set[str]:
-    in_milvus = set()
-    iterator = milvus.query_iterator(collection_name, output_fields=["id"])
-    while True:
-        res = iterator.next()
-        if len(res) == 0:
-            break
-
-        in_milvus.update(item["id"] for item in res)
-
-    iterator.close()
-    return in_milvus
 
 
 @app.command(no_args_is_help=True)
@@ -437,47 +359,35 @@ def to_milvus(directory: Path):
     store the embeddings of all transcriptions from the sql database to milvus.
     """
 
-    milvus, collection_name = mk_milvus(directory)
-    cursor = mk_sql(directory)
+    db = databases.Databases(directory)
 
     rprint("Connection to Milvus and SQL established :tada:")
 
-    in_milvus = get_all_ids(milvus, collection_name)
-    in_sql = set(data[0] for data in cursor.execute("SELECT hash FROM paragraphs").fetchall())  # fetchall returns (hash,)
+    in_milvus = db.get_all_milvus_ids()
+    in_sql = db.get_all_paragraph_hashes()
 
-    to_insert = in_sql - in_milvus
+    to_insert: set[str] = in_sql - in_milvus
     rprint(f"SQL: {len(in_sql)} Milvus: {len(in_milvus)} To insert: {len(to_insert)}")
 
     if len(to_insert) == 0:
         rprint("[green]Milvus is up to date!")
         return
 
-    def process_one(batch: list[int]):
-        paragraphs = cursor.execute("SELECT hash, text FROM paragraphs WHERE hash IN (%s)" % ",".join("?" * len(batch)), batch).fetchall()
-        paragraphs = {hash_: text for hash_, text in paragraphs}
+    def process_one(batch: list[str]):
+        paragraphs = db.get_paragraphs(batch)
+        texts = [p.text for p in paragraphs]
 
-        n_words = sum(len(p.split()) for p in paragraphs.values())
+        n_words = sum(len(t.split()) for t in texts)
         runner.progress.log(f"Embedding {len(paragraphs)} paragraphs ({n_words} words)")
-        embeddings = get_embedding(list(paragraphs.values()))
 
-        data_to_insert = [
-            {
-                "id": id,
-                "vector": embedding,
-            }
-            for id, embedding in zip(paragraphs.keys(), embeddings)
-        ]
-        milvus.insert(collection_name, data_to_insert)
+        embeddings = get_embedding(texts)
+        db.milvus_add(texts, embeddings)
 
     runner = MyParallel(progress_per_task=False, show_threads=False)
     for batch in itertools.batched(to_insert, 1000):
         runner.add(process_one)(batch)
 
     runner.run()
-    cursor.close()
-
-
-
 
 
 @app.command(no_args_is_help=True)
@@ -486,32 +396,23 @@ def search(directory: Path, query: str):
     Search for a query in a directory of transcriptions.
     """
 
-    milvus, collection_name = mk_milvus(directory)
-    cursor = mk_sql(directory)
+    db = databases.Databases(directory)
 
     embedding = get_embedding([query])[0]
 
-    response = milvus.search(collection_name, [embedding], top_k=10, anns_field="vector")
-
-    rprint("Results:")
-
-    # Retrieve all info of the paragraphs into Paragraph objects
-    paragraph_hashs = [item['id'] for item in response[0]]
-    paragraphs = cursor.execute("SELECT * FROM paragraphs WHERE hash IN (%s)" % ",".join("?" * len(paragraph_hashs)), paragraph_hashs).fetchall()
-    paragraphs = [Paragraph(podcast_id=p[1], hash=p[2], text=p[3], paragraph_order=p[4]) for p in paragraphs]
-
-    # Retrieve the podcast titles
-    podcast_ids = {p.podcast_id for p in paragraphs}
-    podcasts = cursor.execute("SELECT * FROM podcasts WHERE id IN (%s)" % ",".join("?" * len(podcast_ids)), tuple(podcast_ids)).fetchall()
-    podcasts = {p[0]: PodcastSQL(id=p[0], title=p[1], filename=p[2]) for p in podcasts}
+    paragraphs = db.search(embedding)
+    podcasts = db.get_podcasts(list({p.podcast_id for p in paragraphs}))
 
     # Group the paragraphs by podcast, using itertool's groupby
     paragraphs = sorted(paragraphs, key=lambda p: p.podcast_id)
-    paragraphs = itertools.groupby(paragraphs, key=lambda p: p.podcast_id)
-    paragraphs = {podcast_id: list(group) for podcast_id, group in paragraphs}
+    paragraphs_by_podcasts = {
+        podcast_id: list(group)
+        for podcast_id, group in itertools.groupby(paragraphs, key=lambda p: p.podcast_id)
+    }
 
-    for podcast_id, podcast_paragraphs in paragraphs.items():
-        rprint(f"[green]{podcasts[podcast_id].title}[/green]")
+    for podcast_id, podcast_paragraphs in paragraphs_by_podcasts.items():
+        podcast = next(p for p in podcasts if p.id == podcast_id)
+        rprint(f"[green]{podcast.title}[/green]")
         for paragraph in podcast_paragraphs:
             rprint(paragraph.text)
         rprint("")

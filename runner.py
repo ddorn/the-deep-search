@@ -65,7 +65,7 @@ class Task:
 
 
 class Parallel:
-    def __init__(self, n_jobs: int, progress_per_task: bool = False, show_done: bool = True, show_threads: bool = True):
+    def __init__(self, n_jobs: int = 1, progress_per_task: bool = False, show_done: bool = True, show_threads: bool = True):
         self.n_jobs = n_jobs
         self.tasks: list[Task] = []
         self.progress_per_task = progress_per_task
@@ -99,14 +99,17 @@ class Parallel:
         with self.progress:
             self.setup_progress()
 
-            threads = []
-            for runner_id in range(self.n_jobs):
-                thread = threading.Thread(target=self.thread_runner, args=(runner_id,))
-                thread.start()
-                threads.append(thread)
+            if self.n_jobs == 1:
+                self.thread_runner(0)
+            else:
+                threads = []
+                for runner_id in range(self.n_jobs):
+                    thread = threading.Thread(target=self.thread_runner, args=(runner_id,))
+                    thread.start()
+                    threads.append(thread)
 
-            for thread in threads:
-                thread.join()
+                for thread in threads:
+                    thread.join()
 
             self.report_all_end()
 

@@ -404,6 +404,19 @@ def to_sql(directory: Path):
     cursor.commit()
 
 
+class Paragraph(BaseModel):
+    podcast_id: int
+    hash: str
+    text: str
+    paragraph_order: int
+
+
+class PodcastSQL(BaseModel):
+    id: int
+    title: str
+    filename: str
+
+
 def get_all_ids(milvus, collection_name) -> set[str]:
     in_milvus = set()
     iterator = milvus.query_iterator(collection_name, output_fields=["id"])
@@ -473,14 +486,35 @@ def search(directory: Path, query: str):
     Search for a query in a directory of transcriptions.
     """
 
-    client, collection_name = mk_milvus(directory)
+    milvus, collection_name = mk_milvus(directory)
+    cursor = mk_sql(directory)
 
     embedding = get_embedding([query])[0]
 
-    response = client.search(collection_name, [embedding], top_k=10, anns_field="vector")
+    response = milvus.search(collection_name, [embedding], top_k=10, anns_field="vector")
 
-    for result in response:
-        rprint(result)
+    rprint("Results:")
+
+    # Retrieve all info of the paragraphs into Paragraph objects
+    paragraph_hashs = [item['id'] for item in response[0]]
+    paragraphs = cursor.execute("SELECT * FROM paragraphs WHERE hash IN (%s)" % ",".join("?" * len(paragraph_hashs)), paragraph_hashs).fetchall()
+    paragraphs = [Paragraph(podcast_id=p[1], hash=p[2], text=p[3], paragraph_order=p[4]) for p in paragraphs]
+
+    # Retrieve the podcast titles
+    podcast_ids = {p.podcast_id for p in paragraphs}
+    podcasts = cursor.execute("SELECT * FROM podcasts WHERE id IN (%s)" % ",".join("?" * len(podcast_ids)), tuple(podcast_ids)).fetchall()
+    podcasts = {p[0]: PodcastSQL(id=p[0], title=p[1], filename=p[2]) for p in podcasts}
+
+    # Group the paragraphs by podcast, using itertool's groupby
+    paragraphs = sorted(paragraphs, key=lambda p: p.podcast_id)
+    paragraphs = itertools.groupby(paragraphs, key=lambda p: p.podcast_id)
+    paragraphs = {podcast_id: list(group) for podcast_id, group in paragraphs}
+
+    for podcast_id, podcast_paragraphs in paragraphs.items():
+        rprint(f"[green]{podcasts[podcast_id].title}[/green]")
+        for paragraph in podcast_paragraphs:
+            rprint(paragraph.text)
+        rprint("")
 
 
 if __name__ == "__main__":

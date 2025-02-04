@@ -7,17 +7,6 @@ from typing import Any, Callable
 from rich import print as rprint
 from rich.progress import Progress, SpinnerColumn, TimeElapsedColumn, TextColumn, Column, TaskProgressColumn, BarColumn, TimeRemainingColumn, TaskID
 
-def test_task(*args):
-    import random
-    from time import sleep
-
-    sleep(random.random())
-    if random.random() < 0.1:
-        raise ValueError("Random error")
-
-    return args
-
-
 
 class Result:
     is_error: int
@@ -52,10 +41,16 @@ class ErrorResult(Result):
     def __init__(self, error: Exception):
         self._error = error
 
+    def __repr__(self):
+        return f"ErrorResult({self._error})"
+
 class SuccessResult(Result):
     is_error = False
     def __init__(self, result: Any):
         self._result = result
+
+    def __repr__(self):
+        return f"SuccessResult({self._result})"
 
 
 @dataclass
@@ -128,8 +123,9 @@ class Parallel:
                     self.set_result(task_id, SuccessResult(result))
                 except Exception as e:
                     self.set_result(task_id, ErrorResult(e))
-                    rprint(f"[red]Error processing {task.name}[/red]")
-                    traceback.print_exc()
+                    self.progress.log(f"[red]Error processing {task.name}[/red]")
+                    exc = traceback.format_exc()
+                    self.progress.log(exc)
                     self.report_task_error(runner_id, task_id)
                 finally:
                     self.report_end_task(runner_id, task_id)
@@ -176,7 +172,7 @@ class Parallel:
 if __name__ == "__main__":
     parallel = Parallel(n_jobs=4)
 
-    def test_task(*args):
+    def test_task(args):
         import random
         from time import sleep
 

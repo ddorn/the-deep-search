@@ -8,9 +8,9 @@ dependencies = [
     "aiohttp>=3.11.11",
     "deepgram-sdk>=3.8.0",
     "joblib>=1.4.2",
-    "jqpy>=1.0.0",
     "openai>=1.60.2",
     "pydantic>=2.10.6",
+    "pymilvus>=2.5.4",
     "tqdm>=4.67.1",
     "typer>=0.15.1",
 ]

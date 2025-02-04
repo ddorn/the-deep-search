@@ -4,6 +4,7 @@ import json
 import os
 import shlex
 import shutil
+import sqlite3
 import subprocess
 import sys
 from typing import Annotated
@@ -14,11 +15,13 @@ from tqdm import tqdm
 from pathlib import Path
 from pydantic import BaseModel, Field, AliasPath, AliasChoices
 from rich import print as rprint
-from openai import AsyncClient
 import tempfile
 from joblib import Parallel, delayed
 import deepgram
-import jqpy
+from pymilvus import MilvusClient
+import openai
+import hashlib
+
 
 from runner import Parallel as MyParallel
 
@@ -39,19 +42,11 @@ class Podcast(BaseModel):
     title: Annotated[str, Field(alias=AliasPath("format", "tags", "title"))]
 
 
-async def gather_metadata(podcast: Path) -> Podcast:
+def gather_metadata(podcast: Path) -> Podcast:
     cmd = f"ffprobe -show_chapters -show_format -print_format json -loglevel quiet {shlex.quote(str(podcast))}"
 
-    process = await asyncio.create_subprocess_shell(cmd, stdout=subprocess.PIPE)
-
-    stdout, stderr = await process.communicate()
-    if stderr:
-        rprint(stderr.decode())
-    if process.returncode != 0:
-        raise RuntimeError("ffprobe failed")
-
-    return Podcast.model_validate_json(stdout)
-
+    output = subprocess.check_output(cmd, shell=True)
+    return Podcast.model_validate_json(output)
 
 def ensure_chapters_cover_podcast(podcast: Podcast) -> Podcast:
     """Add chapters for parts that are not covered by chapters."""
@@ -132,7 +127,7 @@ async def process_one(podcast: Path):
 
     rprint(f"Processing {shlex.quote(str(podcast))}")
 
-    metadata = await gather_metadata(podcast)
+    metadata = gather_metadata(podcast)
     metadata = ensure_chapters_cover_podcast(metadata)
 
     chapters_folders = podcast.with_name(podcast.stem + "_chapters")
@@ -232,14 +227,12 @@ def dl_and_compress(rss_feed: str, directory: Path):
 def cost(directory: Path, cost_per_minute: float = 0.006):
     """Estimate the cost of transcribing all files in a directory."""
 
-    tasks = [gather_metadata(file) for file in directory.glob("*.mp3")]
+    runner = MyParallel(n_jobs=10, show_done=False, show_threads=False)
+    for file in directory.glob("*.mp3"):
+        runner.add(gather_metadata, title=file.stem)(file)
+    metadata_results = runner.run()
 
-    async def gather_all_metadata(tasks):
-        return await asyncio.gather(*tasks)
-
-    metadata: list[Podcast] = asyncio.run(gather_all_metadata(tasks))
-
-    total_duration = sum(podcast.duration for podcast in metadata) / 60  # in minutes
+    total_duration = sum(podcast.unwrap().duration for podcast in metadata_results) / 60  # in minutes
 
     cost = total_duration * cost_per_minute
     rprint(f"Total duration: {total_duration / 60:.2f} hours")
@@ -310,11 +303,171 @@ def transcript(directory: Path):
     """
 
     for file in tqdm(list(directory.glob("*.json"))):
-        data = json.loads(file.read_text())
+        with file.open() as f:
+            data = json.load(f)
         transcript = data["results"]["channels"][0]["alternatives"][0]["transcript"]
-        with open(file.with_suffix(".md"), "w") as f:
+        with open(file.with_suffix(".txt"), "w") as f:
             f.write(transcript)
 
+EMBDEDDING_DIMENSIONS = 1536
+
+def get_embedding(text: list[str]) -> list[list[float]]:
+    response = openai.embeddings.create(
+        dimensions=EMBDEDDING_DIMENSIONS,
+        model="text-embedding-3-small",
+        input=text,
+    )
+
+    out: list[list[float]] = [None] * len(text)
+    for embedding in response.data:
+        out[embedding.index] = embedding.embedding
+
+    return out
+
+
+
+def txt_hash(text: str) -> str:
+    return hashlib.sha256(text.encode()).hexdigest()
+
+
+def mk_milvus(directory: Path):
+
+    db_file = directory / "milvus.db"
+    client = MilvusClient(str(db_file))
+    collection_name = "podcasts"
+    # The primary key is the hash of the text
+    client.create_collection(collection_name,
+                            dimension=EMBDEDDING_DIMENSIONS,
+                            id_type="string",
+                            max_length=len(txt_hash(""))
+    )
+
+    return client, collection_name
+
+
+def mk_sql(directory: Path):
+    db_file = directory / "transcripts.db"
+    conn = sqlite3.connect(str(db_file))
+    c = conn.cursor()
+    """
+    Shema:
+
+    Table: paragraphs
+        - links to the podcast in which it is
+        - id
+        - hash (sha256 of the text)
+        - text
+        - order in the podcast
+
+    Table: podcasts
+        - id
+        - title
+        - filename
+    """
+
+    c.execute("CREATE TABLE IF NOT EXISTS podcasts (id INTEGER PRIMARY KEY, title TEXT, filename TEXT)")
+    c.execute("CREATE TABLE IF NOT EXISTS paragraphs (id INTEGER PRIMARY KEY, podcast_id INTEGER, hash TEXT, text TEXT, paragraph_order INTEGER)")
+
+    return conn
+
+
+@app.command(no_args_is_help=True)
+def to_sql(directory: Path):
+    """
+    Add all transcriptions in a directory to a SQLite database.
+    """
+
+    cursor = mk_sql(directory)
+
+    for file in tqdm(list(directory.glob("*.json"))):
+        with open(file) as f:
+            transcript = json.load(f)
+
+        # Add the podcast to the sql database, if it doesn't exist
+        res = cursor.execute("SELECT id FROM podcasts WHERE filename = ?", (file.stem,))
+        podcast_id = res.fetchone()
+        if podcast_id is None:
+            metadata = gather_metadata(file.with_suffix(".mp3"))
+            res = cursor.execute("INSERT INTO podcasts (title, filename) VALUES (?, ?)", (metadata.title, file.stem))
+            podcast_id = res.lastrowid
+        else:
+            continue
+
+        paragraphs = transcript["results"]["channels"][0]["alternatives"][0]["paragraphs"]["paragraphs"]
+        paragraph_texts = [" ".join([sentence["text"] for sentence in paragraph["sentences"]]) for paragraph in paragraphs]
+
+        cursor.executemany("INSERT INTO paragraphs (podcast_id, hash, text, paragraph_order) VALUES (?, ?, ?, ?)",
+            [(podcast_id, txt_hash(p), p, i) for i, p in enumerate(paragraph_texts)]
+        )
+
+    cursor.commit()
+
+
+@app.command(no_args_is_help=True)
+def to_milvus(directory: Path):
+    """
+    Add all transcriptions in a directory to a Milvus database.
+    """
+
+    milvus, collection_name = mk_milvus(directory)
+    cursor = mk_sql(directory)
+
+    rprint(f"Stats for {collection_name}", milvus.get_collection_stats(collection_name))
+
+    def process_one(file: Path):
+        with open(file) as f:
+            transcript = json.load(f)
+
+        paragraphs = transcript["results"]["channels"][0]["alternatives"][0]["paragraphs"]["paragraphs"]
+        paragraph_texts = [" ".join([sentence["text"] for sentence in paragraph["sentences"]]) for paragraph in paragraphs]
+        unique_paragraphs = { txt_hash(p): p for p in paragraph_texts }
+
+        response = milvus.get(collection_name, list(unique_paragraphs.keys()), output_fields=["id"])
+        existing_ids: set[str] = { item["id"] for item in response }
+        paragraphs_to_add = { k: v for k, v in unique_paragraphs.items() if k not in existing_ids }
+
+        if not paragraphs_to_add:
+            return
+
+        n_words = sum(len(p.split()) for p in paragraphs_to_add.values())
+        runner.progress.log(f"Embedding {len(paragraphs_to_add)} paragraphs ({n_words} words) for '{file.stem}'. Skipping {len(existing_ids)} existing.")
+        embeddings = get_embedding(list(paragraphs_to_add.values()))
+
+        data_to_insert = [
+            {
+                "id": id,
+                "vector": embedding,
+            }
+            for id, embedding in zip(paragraphs_to_add.keys(), embeddings)
+        ]
+        runner.progress.log(f"Inserting {len(data_to_insert)} embeddings for {file}")
+        milvus.insert(collection_name, data_to_insert)
+
+
+    runner = MyParallel(n_jobs=1)
+
+    for file in sorted(directory.glob("*.json"), reverse=True):
+        runner.add(process_one, title=file.stem)(file)
+        break
+
+    runner.run()
+
+
+
+@app.command(no_args_is_help=True)
+def search(directory: Path, query: str):
+    """
+    Search for a query in a directory of transcriptions.
+    """
+
+    client, collection_name = mk_milvus(directory)
+
+    embedding = get_embedding([query])[0]
+
+    response = client.search(collection_name, [embedding], top_k=10, anns_field="vector")
+
+    for result in response:
+        rprint(result)
 
 
 if __name__ == "__main__":

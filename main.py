@@ -1,12 +1,15 @@
 #!/usr/bin/env -S uv run --frozen
 
+import contextlib
 import itertools
 import json
+from multiprocessing import context
 import os
 import shlex
 import shutil
 import subprocess
 import sys
+import time
 from typing import Annotated
 import httpx
 import typer
@@ -203,7 +206,7 @@ def compress_one(path: Path, output: Path = None):
 @app.command(no_args_is_help=True)
 def dl_and_compress(rss_feed: str, directory: Path):
     """
-    Download all mp3 files in a directory and compress them.
+    Download all mp3 files in a directory and compress them in place.
     """
 
     # cmd = f'pnpx podcast-dl --url "{shlex.quote(rss_feed)}" --dir "{shlex.quote(str(directory))}"'
@@ -250,7 +253,6 @@ options = deepgram.PrerecordedOptions(
     punctuate=True,
     paragraphs=True,
     diarize=True,
-    # sentiment=True,
     language="en",
 )
 
@@ -347,7 +349,7 @@ def to_sql(directory: Path):
         paragraphs = transcript["results"]["channels"][0]["alternatives"][0]["paragraphs"]["paragraphs"]
         paragraph_texts = [" ".join([sentence["text"] for sentence in paragraph["sentences"]]) for paragraph in paragraphs]
 
-        db.add_paragraphs_sql([ databases.Paragraph.from_text(p, podcast_id, i) for i, p in enumerate(paragraph_texts) ])
+        db.add_paragraphs_sql([ databases.Paragraph.from_text(podcast_id, text, i) for i, text in enumerate(paragraph_texts) ])
 
     db.sql.commit()
 
@@ -396,11 +398,15 @@ def search(directory: Path, query: str):
     Search for a query in a directory of transcriptions.
     """
 
-    db = databases.Databases(directory)
-
     embedding = get_embedding([query])[0]
+    db = databases.Databases(directory)
+    with timeit():
 
-    paragraphs = db.search(embedding)
+
+        paragraphs = db.search(embedding)
+        rprint(*paragraphs)
+        return
+
     podcasts = db.get_podcasts(list({p.podcast_id for p in paragraphs}))
 
     # Group the paragraphs by podcast, using itertool's groupby
@@ -416,6 +422,106 @@ def search(directory: Path, query: str):
         for paragraph in podcast_paragraphs:
             rprint(paragraph.text)
         rprint("")
+
+
+import numpy as np
+
+@app.command(no_args_is_help=True)
+def migrate_milvus(directory: Path):
+    """
+    Migrate the milvus database to a new file.
+    """
+
+    db = databases.Databases(directory)
+
+    print(db.milvus.get_collection_stats(db.collection_name))
+    progress = tqdm(total=db.milvus.get_collection_stats(db.collection_name)["row_count"])
+
+    ids = np.empty((0,), dtype=str)
+    embeddings = np.empty((0, databases.EMBDEDDING_DIMENSIONS), dtype=float)
+
+    iterator = db.milvus.query_iterator(db.collection_name, output_fields=["id", "vector"], batch_size=100)
+    while True:
+        res = iterator.next()
+        if len(res) == 0:
+            break
+
+        progress.update(len(res))
+        ids = np.append(ids, [item["id"] for item in res])
+        embeddings = np.append(embeddings, [item["vector"] for item in res], axis=0)
+
+    iterator.close()
+    progress.close()
+
+    print(ids.shape, embeddings.shape)
+
+    np.savez(directory / "embeddings.npz", ids=ids, embeddings=embeddings)
+
+
+@app.command(no_args_is_help=True)
+def test(file: Path, query: str, n: int = 10):
+
+    emb = np.array(get_embedding([query])[0])
+    data = np.load(file)
+    ids = data["ids"]
+    embeddings = data["embeddings"]
+
+    # check highest similarity
+    sim = np.dot(embeddings, emb)
+    top10 = np.argsort(sim)[::-1][:n]
+
+    db = databases.Databases(Path("/home/diego/Downloads/DeepQuestions"), milvus=False)
+    paragraphs = db.get_paragraphs(ids[top10].tolist())
+
+    nicely_show_search(db, paragraphs, sim[top10])
+
+
+def nicely_show_search(db: databases.Databases, paragraphs: list[databases.Paragraph], score: list[float] | None = None):
+    podcasts_ids = []
+    # deduplicate podcasts, keeping order
+    for paragraph in paragraphs:
+        if paragraph.podcast_id not in podcasts_ids:
+            podcasts_ids.append(paragraph.podcast_id)
+
+    podcasts = db.get_podcasts(podcasts_ids)
+    # Reorder podcasts to match the order of their ids
+    podcasts = sorted(podcasts, key=lambda p: podcasts_ids.index(p.id))
+
+
+    if score is not None:
+        score_by_id = {p.id: s for p, s in zip(paragraphs, score)}
+    else:
+        score_by_id = {}
+
+    for podcast in podcasts:
+        paragraphs_in_podcast = [p for p in paragraphs if p.podcast_id == podcast.id]
+        # Get context for each paragraph (previous and next paragraph)
+        paragraphs_indices_to_show = set()
+        for paragraph in paragraphs_in_podcast:
+            paragraphs_indices_to_show.add(paragraph.paragraph_order)
+            paragraphs_indices_to_show.add(paragraph.paragraph_order - 1)
+            paragraphs_indices_to_show.add(paragraph.paragraph_order + 1)
+
+        paragraphs_to_show = db.get_paragraph_in_podcast(podcast.id, list(paragraphs_indices_to_show))
+        paragraphs_to_show = sorted(paragraphs_to_show, key=lambda p: p.paragraph_order)
+
+        rprint(f"[purple]{podcast.title}")
+        for paragraph in paragraphs_to_show:
+            if p_score := score_by_id.get(paragraph.id):
+                rprint(f"[blue]({p_score:.2f})[/blue] [green]{paragraph.text}")
+            else:
+                rprint(paragraph.text)
+        rprint("")
+
+
+@contextlib.contextmanager
+def timeit():
+    start = time.time()
+    yield
+    print(f"Time: {time.time() - start:.2f}")
+
+
+
 
 
 if __name__ == "__main__":

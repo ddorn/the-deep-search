@@ -48,7 +48,9 @@ class Podcast(BaseModel):
 
 
 class Databases:
+
     def __init__(self, directory: Path, milvus: bool = True):
+
         self.directory = directory
         if milvus:
             self.milvus, self.collection_name = self.mk_milvus(directory)
@@ -57,9 +59,12 @@ class Databases:
             self.collection_name = None
         self.sql = self.mk_sql(directory)
 
-
     def __del__(self):
-        self.sql.close()
+        try:
+            self.sql.close()
+        except AttributeError:
+            pass
+
 
     @staticmethod
     def mk_milvus(directory: Path):
@@ -107,10 +112,15 @@ class Databases:
         paragraphs = [Paragraph(id=p[0], podcast_id=p[1], hash=p[2], text=p[3], paragraph_order=p[4]) for p in paragraphs]
         return paragraphs
 
+    def get_paragraph_in_podcast(self, podcast_id: int, paragraph_order: Sequence[int]) -> list[Paragraph]:
+        paragraphs = self.sql.execute("SELECT * FROM paragraphs WHERE podcast_id = ? AND paragraph_order IN (%s)" % ",".join("?" * len(paragraph_order)), [podcast_id] + list(paragraph_order)).fetchall()
+        paragraphs = [Paragraph(id=p[0], podcast_id=p[1], hash=p[2], text=p[3], paragraph_order=p[4]) for p in paragraphs]
+        return paragraphs
+
+
     def get_podcast_by_filename(self, filename: str) -> Podcast | None:
         """Filename is the name of the file without the extension"""
         return self.sql.execute("SELECT * FROM podcasts WHERE filename = ?", (filename,)).fetchone()
-
 
     def get_podcasts(self, ids: Sequence[int]) -> list[Podcast]:
         podcasts = self.sql.execute("SELECT * FROM podcasts WHERE id IN (%s)" % ",".join("?" * len(ids)), ids).fetchall()

@@ -17,12 +17,12 @@ sources:
 """
 
 
-class Source(BaseModel):
+class SourceConfig(BaseModel):
     type: str
     args: dict
 
 class Config(BaseModel):
-    sources: dict[str, Source]
+    sources: dict[str, SourceConfig]
 
 
 def get_config() -> Config:

@@ -10,6 +10,7 @@ dependencies = [
     "fastapi>=0.115.8",
     "joblib>=1.4.2",
     "openai>=1.60.2",
+    "platformdirs>=4.3.7",
     "pydantic>=2.10.6",
     "pymilvus>=2.5.4",
     "pyyaml>=6.0.2",

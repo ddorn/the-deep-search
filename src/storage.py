@@ -1,36 +1,63 @@
-import os
-import appdirs
 import sqlite3
 import shutil
 
-
-def logger():
-    pass
-
-
-class Store:
-    def __init__(self, root):
-        self.root = root
-
-    @classmethod
-    def with_name(cls, name):
-        config_dir = appdirs.user_config_dir("deepsearch")
-        path = os.path.join(config_dir, name)
-        os.makedirs(path, exist_ok=True)
-        return cls(path)
-
-    def open(self, filename, mode, *args, **kwargs):
-        return open(self.path_for(filename), mode, *args, **kwargs)
-
-    def path_for(self, filename):
-        return os.path.join(self.root, filename)
+from tasks import Task, TaskStatus, PartialTask
+from constants import DIRS
+from logs import logger
 
 
 class Database:
     def __init__(self, path):
-        self.conn = sqlite3.connect(self.path)
-        self.cursor = self.conn.cursor()
+        self.path = path
+        logger.debug(f"Using database at {self.path}")
+        self.db = sqlite3.connect(self.path)
+        self.cursor = self.db.cursor()
         self.migrate()
+
+    def create_task(self, task: PartialTask, commit=True):
+        cur = self.cursor.execute(
+            "INSERT INTO tasks (strategy, document_id, status, args) VALUES (?, ?, ?, ?)",
+            (task.strategy, task.document_id, task.status, task.args),
+        )
+
+        if commit:
+            self.db.commit()
+
+        return cur.lastrowid
+
+    def create_dependent_tasks(self, *tasks: PartialTask):
+        """Create tasks that will be executed in the order passed. The first will be pending, the rest blocked."""
+        child = None
+        for task in reversed(tasks):
+            assert task.child_id is None
+            task.child_id = child
+            if child is None:
+                task.status = TaskStatus.PENDING
+            else:
+                task.status = TaskStatus.BLOCKED
+            child = self.create_task(task, commit=False)
+
+        self.db.commit()
+
+    def get_pending_tasks(self) -> list[Task]:
+        tasks = self.cursor.execute(
+            "SELECT id, document_id, strategy, status, args, created_at, child_id FROM tasks WHERE status = ?",
+            (TaskStatus.PENDING,),
+        ).fetchall()
+        return [
+            Task(
+                id=task[0],
+                document_id=task[1],
+                strategy=task[2],
+                status=task[3],
+                args=task[4],
+                created_at=task[5],
+                child_id=task[6],
+            )
+            for task in tasks
+        ]
+
+    # -- Migrations --
 
     @property
     def version(self):
@@ -44,7 +71,7 @@ class Database:
             self.migrate_0_to_1,
         ]
 
-        if self.version == len(self.MIGRATIONS):
+        if self.version == len(migrations):
             logger.info(f"No migrations to run - current version is {self.version}")
             return
 
@@ -54,7 +81,7 @@ class Database:
             )
             return
 
-        backup_path = CONFIG_DIR.path_for(f"database-backup-{self.version}.sqlite")
+        backup_path = DIRS.user_data_path / f"database-backup-{self.version}.sqlite"
         logger.info(f"Backing up the database to {backup_path} before migration.")
         shutil.copy(self.path, backup_path)
 
@@ -69,30 +96,37 @@ class Database:
         logger.info(f"Database migrated to version {self.version}")
 
     def migrate_0_to_1(self):
-        self.cursor.execute("""CREATE TABLE IF NOT EXISTS documents (
-            id INTEGER primary key autoincrement
-            urn STRING not null
-            source STRING not null
-            created_at TIMESTAMP not null default now()
+        self.cursor.execute(
+            """CREATE TABLE IF NOT EXISTS documents (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            urn TEXT NOT NULL,
+            source TEXT NOT NULL,
+            created_at TIMESTAMP NOT NULL DEFAULT (DATETIME('now', 'utc')),
             UNIQUE(urn)
-        )""")
+        )"""
+        )
 
-        self.cursor.execute("""CREATE TABLE IF NOT EXISTS tasks (
-            id INTEGER primary key autoincrement
-            document_id INTEGER references documents(id) ON DELETE CASCADE
-            kind STRING
-            status STRING not null
-            args BLOB
-        )""")
+        self.cursor.execute(
+            """CREATE TABLE IF NOT EXISTS tasks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            document_id STRING REFERENCES documents(urn) ON DELETE CASCADE,
+            strategy TEXT,
+            status TEXT NOT NULL,
+            args BLOB,
+            created_at TIMESTAMP NOT NULL DEFAULT (DATETIME('now', 'utc')),
+            child_id INTEGER REFERENCES tasks(id) ON DELETE CASCADE
+        )"""
+        )
 
-        self.cursor.execute("""CREATE TABLE IF NOT EXISTS byproducts (
-                id integer primary key autoincrement
-                document_id integer references documents(id) ON DELETE CASCADE
-                path string
-                created_at timestamp not null default now()
-                UNIQUE(document_id, path)
-        )""")
+        self.cursor.execute(
+            """CREATE TABLE IF NOT EXISTS byproducts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            document_id TEXT REFERENCES documents(urn) ON DELETE CASCADE,
+            path TEXT,
+            created_at TIMESTAMP NOT NULL DEFAULT (DATETIME('now', 'utc')),
+            UNIQUE(document_id, path)
+        )"""
+        )
 
 
-CONFIG_DIR = Store.with_name("")
-DATABASE = Database(CONFIG_DIR.path_for("database.sqlite"))
+DATABASE = Database(DIRS.user_data_path / "database.sqlite")

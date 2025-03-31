@@ -3,7 +3,7 @@ from pathlib import Path
 import abc
 from typing import ClassVar
 
-from src.tasks import Task
+from tasks import Task
 
 
 class Strategy:
@@ -24,3 +24,16 @@ class Strategy:
     @abc.abstractmethod
     def process_all(self, tasks: list[Task]) -> None:
         ...
+
+
+def collect_built_in_strategies() -> dict[str, type[Strategy]]:
+    strategies = {}
+
+    for path in Path(__file__).parent.rglob("*.py"):
+        module = import_module(f".{path.stem}", __package__)
+        for attribute in dir(module):
+            obj = getattr(module, attribute)
+            if isinstance(obj, type) and issubclass(obj, Strategy) and obj != Strategy:
+                strategies[obj.NAME] = obj
+
+    return strategies

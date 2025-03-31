@@ -112,11 +112,16 @@ class Databases:
         paragraphs = [Paragraph(id=p[0], podcast_id=p[1], hash=p[2], text=p[3], paragraph_order=p[4]) for p in paragraphs]
         return paragraphs
 
-    def get_paragraph_in_podcast(self, podcast_id: int, paragraph_order: Sequence[int]) -> list[Paragraph]:
-        paragraphs = self.sql.execute("SELECT * FROM paragraphs WHERE podcast_id = ? AND paragraph_order IN (%s)" % ",".join("?" * len(paragraph_order)), [podcast_id] + list(paragraph_order)).fetchall()
+    def get_paragraph_in_podcast(self, podcast_id: int, paragraph_order: Sequence[int] | None = None) -> list[Paragraph]:
+        query = "SELECT * FROM paragraphs WHERE podcast_id = ?"
+        if paragraph_order is not None:
+            query += " AND paragraph_order IN (%s)" % ",".join("?" * len(paragraph_order))
+            paragraphs = self.sql.execute(query, [podcast_id] + list(paragraph_order)).fetchall()
+        else:
+            paragraphs = self.sql.execute(query, (podcast_id,)).fetchall()
+
         paragraphs = [Paragraph(id=p[0], podcast_id=p[1], hash=p[2], text=p[3], paragraph_order=p[4]) for p in paragraphs]
         return paragraphs
-
 
     def get_podcast_by_filename(self, filename: str) -> Podcast | None:
         """Filename is the name of the file without the extension"""

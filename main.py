@@ -393,7 +393,7 @@ def to_milvus(directory: Path):
 
 
 @app.command(no_args_is_help=True)
-def search(directory: Path, query: str):
+def search_old(directory: Path, query: str):
     """
     Search for a query in a directory of transcriptions.
     """
@@ -459,7 +459,7 @@ def migrate_milvus(directory: Path):
 
 
 @app.command(no_args_is_help=True)
-def test(file: Path, query: str, n: int = 10):
+def search(file: Path, query: str, n: int = 10):
 
     emb = np.array(get_embedding([query])[0])
     data = np.load(file)
@@ -476,7 +476,7 @@ def test(file: Path, query: str, n: int = 10):
     nicely_show_search(db, paragraphs, sim[top10])
 
 
-def nicely_show_search(db: databases.Databases, paragraphs: list[databases.Paragraph], score: list[float] | None = None):
+def nicely_show_search(db: databases.Databases, paragraphs: list[databases.Paragraph], score: list[float] | None = None, ctx_size=600):
     podcasts_ids = []
     # deduplicate podcasts, keeping order
     for paragraph in paragraphs:
@@ -494,19 +494,40 @@ def nicely_show_search(db: databases.Databases, paragraphs: list[databases.Parag
         score_by_id = {}
 
     for podcast in podcasts:
-        paragraphs_in_podcast = [p for p in paragraphs if p.podcast_id == podcast.id]
-        # Get context for each paragraph (previous and next paragraph)
+        highlighted_paragraphs_in_podcast = [p for p in paragraphs if p.podcast_id == podcast.id]
+        all_paragraphs = db.get_paragraph_in_podcast(podcast.id)
+
+        # Get context for each paragraph (at least ctx_size characters)
         paragraphs_indices_to_show = set()
-        for paragraph in paragraphs_in_podcast:
+        for paragraph in highlighted_paragraphs_in_podcast:
             paragraphs_indices_to_show.add(paragraph.paragraph_order)
-            paragraphs_indices_to_show.add(paragraph.paragraph_order - 1)
-            paragraphs_indices_to_show.add(paragraph.paragraph_order + 1)
+
+            # Add previous paragraphs until we reach ctx_size characters
+            ctx = 0
+            for p in reversed(all_paragraphs[:paragraph.paragraph_order]):
+                paragraphs_indices_to_show.add(p.paragraph_order)
+                ctx += len(p.text)
+                if ctx > ctx_size:
+                    break
+
+            # Add next paragraphs until we reach ctx_size characters
+            ctx = 0
+            for p in all_paragraphs[paragraph.paragraph_order + 1:]:
+                paragraphs_indices_to_show.add(p.paragraph_order)
+                ctx += len(p.text)
+                if ctx > ctx_size:
+                    break
 
         paragraphs_to_show = db.get_paragraph_in_podcast(podcast.id, list(paragraphs_indices_to_show))
         paragraphs_to_show = sorted(paragraphs_to_show, key=lambda p: p.paragraph_order)
 
         rprint(f"[purple]{podcast.title}")
+        last_paragraph_idx = None
         for paragraph in paragraphs_to_show:
+            if last_paragraph_idx is not None and paragraph.paragraph_order != last_paragraph_idx + 1:
+                rprint("...")
+            last_paragraph_idx = paragraph.paragraph_order
+
             if p_score := score_by_id.get(paragraph.id):
                 rprint(f"[blue]({p_score:.2f})[/blue] [green]{paragraph.text}")
             else:

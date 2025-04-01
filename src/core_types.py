@@ -16,7 +16,7 @@ class Task(BaseModel):
     document_id: str
     status: TaskStatus = TaskStatus.PENDING
     args: str
-    child_id: str | None
+    parent_id: str | None
     created_at: datetime.datetime
 
 
@@ -25,5 +25,12 @@ class PartialTask(BaseModel):
     document_id: str
     args: str = ""
     status: TaskStatus = TaskStatus.PENDING
-    child: str | None = None
+    parent_id: str | None = None
 
+
+class Chunk(BaseModel):
+    id: int
+    document_id: str
+    document_order: int
+    content: str
+    created_at: datetime.datetime

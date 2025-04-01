@@ -3,7 +3,7 @@ from collections import defaultdict
 import random
 
 from strategies.strategy import Strategy, collect_built_in_strategies
-from tasks import Task
+from core_types import Task
 from storage import DATABASE
 from logs import logger
 
@@ -13,6 +13,8 @@ class Executor:
         self.strategies: dict[str, type[Strategy]] = {}
         for strategy in collect_built_in_strategies().values():
             self.register_strategy(strategy)
+
+        self.strategies_instances: dict[str, Strategy] = {}
 
     def register_strategy(self, strategy: type[Strategy]):
         if strategy.NAME in self.strategies:
@@ -66,4 +68,16 @@ class Executor:
         raise NotImplementedError("Not implemented yet")
 
     async def run_tasks(self, tasks: list[Task]) -> None:
-        logger.debug(tasks)
+        if not tasks:
+            return
+
+        # All the tasks should have the same strategy
+        strategies = set(task.strategy for task in tasks)
+        assert len(strategies) == 1, f"Tasks have different strategies: {strategies}"
+        strategy = self.strategies[strategies.pop()]
+
+        if strategy.NAME not in self.strategies_instances:
+            self.strategies_instances[strategy.NAME] = strategy()
+
+        strategy_instance = self.strategies_instances[strategy.NAME]
+        await strategy_instance.process_all(tasks)

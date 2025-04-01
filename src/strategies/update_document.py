@@ -2,8 +2,8 @@ from core_types import Task
 from strategies.strategy import Strategy
 
 
-class DeleteDocumentStrategy(Strategy):
-    NAME = "delete_document"
+class UpdateDocumentStrategy(Strategy):
+    NAME = "update_document"
     PRIORITY = 10
     MAX_BATCH_SIZE = 100
     RESOURCES = []

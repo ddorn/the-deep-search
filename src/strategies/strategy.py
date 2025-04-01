@@ -3,7 +3,7 @@ from pathlib import Path
 import abc
 from typing import ClassVar
 
-from tasks import Task
+from core_types import Task
 
 
 class Strategy:
@@ -22,7 +22,7 @@ class Strategy:
                 raise ValueError(f"Strategy {self.__class__.__name__} must have a {attribute} attribute")
 
     @abc.abstractmethod
-    def process_all(self, tasks: list[Task]) -> None:
+    async def process_all(self, tasks: list[Task]) -> None:
         ...
 
 

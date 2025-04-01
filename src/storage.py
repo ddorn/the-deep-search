@@ -1,7 +1,9 @@
 import sqlite3
 import shutil
 
-from tasks import Task, TaskStatus, PartialTask
+import numpy as np
+
+from core_types import Chunk, Task, TaskStatus, PartialTask
 from constants import DIRS
 from logs import logger
 
@@ -11,13 +13,14 @@ class Database:
         self.path = path
         logger.debug(f"Using database at {self.path}")
         self.db = sqlite3.connect(self.path)
+        self.db.row_factory = sqlite3.Row
         self.cursor = self.db.cursor()
         self.migrate()
 
-    def create_task(self, task: PartialTask, commit=True):
+    def create_task(self, task: PartialTask, commit: bool = True):
         cur = self.cursor.execute(
-            "INSERT INTO tasks (strategy, document_id, status, args) VALUES (?, ?, ?, ?)",
-            (task.strategy, task.document_id, task.status, task.args),
+            "INSERT INTO tasks (strategy, document_id, status, parent_id, args) VALUES (?, ?, ?, ?, ?)",
+            (task.strategy, task.document_id, task.status, task.parent_id, task.args),
         )
 
         if commit:
@@ -25,37 +28,25 @@ class Database:
 
         return cur.lastrowid
 
-    def create_dependent_tasks(self, *tasks: PartialTask):
-        """Create tasks that will be executed in the order passed. The first will be pending, the rest blocked."""
-        child = None
-        for task in reversed(tasks):
-            assert task.child_id is None
-            task.child_id = child
-            if child is None:
-                task.status = TaskStatus.PENDING
-            else:
-                task.status = TaskStatus.BLOCKED
-            child = self.create_task(task, commit=False)
-
-        self.db.commit()
-
     def get_pending_tasks(self) -> list[Task]:
         tasks = self.cursor.execute(
-            "SELECT id, document_id, strategy, status, args, created_at, child_id FROM tasks WHERE status = ?",
+            "SELECT * FROM tasks WHERE status = ?",
             (TaskStatus.PENDING,),
         ).fetchall()
-        return [
-            Task(
-                id=task[0],
-                document_id=task[1],
-                strategy=task[2],
-                status=task[3],
-                args=task[4],
-                created_at=task[5],
-                child_id=task[6],
-            )
-            for task in tasks
-        ]
+        return [Task(**task) for task in tasks]
+
+    def get_chunks(self, chunk_ids: list[str]) -> list[Chunk]:
+        chunks = self.cursor.execute(
+            "SELECT * FROM byproducts WHERE id IN (%s)"
+            % ",".join("?" * len(chunk_ids)),
+            chunk_ids,
+        ).fetchall()
+        return [Chunk(**chunk) for chunk in chunks]
+
+    def update_embeddings(self, chunk_ids: list[str], embeddings: np.ndarray):
+        print(f"Updating embeddings for {len(chunk_ids)} chunks")
+        print(chunk_ids, embeddings)
+
 
     # -- Migrations --
 
@@ -97,10 +88,20 @@ class Database:
 
     def migrate_0_to_1(self):
         self.cursor.execute(
+            """CREATE TABLE IF NOT EXISTS source (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                type TEXT NOT NULL,
+                name TEXT NOT NULL,
+                attributes BLOB ,
+                UNIQUE(type, name),
+                UNIQUE(name)
+            )"""
+        )
+        self.cursor.execute(
             """CREATE TABLE IF NOT EXISTS documents (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            urn TEXT NOT NULL,
-            source TEXT NOT NULL,
+            urn TEXT
+            source_id REFERENCES sources(id) ON DELETE CASCADE,
             created_at TIMESTAMP NOT NULL DEFAULT (DATETIME('now', 'utc')),
             UNIQUE(urn)
         )"""
@@ -109,22 +110,33 @@ class Database:
         self.cursor.execute(
             """CREATE TABLE IF NOT EXISTS tasks (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            document_id STRING REFERENCES documents(urn) ON DELETE CASCADE,
+            document_id INTEGER REFERENCES documents(id) ON DELETE CASCADE,
             strategy TEXT,
             status TEXT NOT NULL,
             args BLOB,
             created_at TIMESTAMP NOT NULL DEFAULT (DATETIME('now', 'utc')),
-            child_id INTEGER REFERENCES tasks(id) ON DELETE CASCADE
+            parent_id INTEGER REFERENCES tasks(id)
         )"""
         )
 
         self.cursor.execute(
             """CREATE TABLE IF NOT EXISTS byproducts (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            document_id TEXT REFERENCES documents(urn) ON DELETE CASCADE,
+            document_id TEXT REFERENCES documents(id) ON DELETE CASCADE,
             path TEXT,
             created_at TIMESTAMP NOT NULL DEFAULT (DATETIME('now', 'utc')),
             UNIQUE(document_id, path)
+        )"""
+        )
+
+        self.cursor.execute(
+            """CREATE TABLE IF NOT EXISTS chunks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            document_id TEXT REFERENCES documents(id) ON DELETE CASCADE,
+            document_order INTEGER,
+            content TEXT,
+            created_at TIMESTAMP NOT NULL DEFAULT (DATETIME('now', 'utc')),
+            UNIQUE(document_id, document_order)
         )"""
         )
 

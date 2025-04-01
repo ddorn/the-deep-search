@@ -1,13 +1,13 @@
 import hashlib
 import os
-import socket
 from pathlib import Path
 
 from pydantic import BaseModel
-from storage import DATABASE
+
 from source import Source
-from strategies import DeleteDocumentStrategy, AutoProcessStrategy
-from tasks import PartialTask
+from storage import DATABASE
+from strategies import AutoProcessStrategy, DeleteDocumentStrategy, UpdateDocumentStrategy
+from core_types import PartialTask
 
 
 class ExtraConfig(BaseModel):
@@ -18,10 +18,6 @@ class DirectorySource(Source[ExtraConfig]):
     NAME = "local-files"
     EXTRA_CONFIG = ExtraConfig
 
-    def retrieve_source(self, document_id: str) -> Path:
-        urn = DATABASE.get_doc(document_id)["urn"]
-        return self.get_path_from_urn(urn)
-
     def add_tasks_from_changes(self):
         previous_scan = self._scan_directory(
             self.data_folder, lambda p: open(p).read().trim()
@@ -29,6 +25,7 @@ class DirectorySource(Source[ExtraConfig]):
         current_scan = self._scan_directory(
             self.config.path, lambda p: self._hash_file(p)
         )
+        print(current_scan)
 
         for urn in previous_scan:
             if urn not in current_scan:
@@ -53,11 +50,7 @@ class DirectorySource(Source[ExtraConfig]):
                 # Document has changed
                 DATABASE.create_dependent_tasks(
                     PartialTask.create(
-                        strategy=DeleteDocumentStrategy.NAME,
-                        document_id=urn,
-                    ),
-                    PartialTask.create(
-                        strategy=AutoProcessStrategy.NAME,
+                        strategy=UpdateDocumentStrategy.NAME,
                         document_id=urn,
                     ),
                 )
@@ -81,8 +74,7 @@ class DirectorySource(Source[ExtraConfig]):
         return file_hash.hexdigest()
 
     def get_urn_for_path(self, path):
-        return f"urn:{self.title}:{path}"
+        return f"urn:file:{path}"
 
-    def get_path_from_urn(self, urn):
-        # TODO: If the path contains a colon, this fails.
-        return urn.split(":")[-1]
+    def get_path_from_urn(self, urn: str):
+        return urn.replace('urn:file:', '')

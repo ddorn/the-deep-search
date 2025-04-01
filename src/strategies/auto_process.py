@@ -3,7 +3,7 @@ import json
 from storage import get_db
 from core_types import Task, PartialTask
 from strategies.strategy import Strategy
-from strategies import EmbedChunksStrategy
+from strategies import ChunkFromTextStrategy
 
 
 class AutoProcessStrategy(Strategy):
@@ -36,7 +36,7 @@ class AutoProcessStrategy(Strategy):
         if ext in ["md", "txt"]:
             db.create_task(
                 PartialTask(
-                    strategy=EmbedChunksStrategy.NAME,
+                    strategy=ChunkFromTextStrategy.NAME,
                     document_id=task.document_id,
                     args=path,
                     parent_id=task.id,

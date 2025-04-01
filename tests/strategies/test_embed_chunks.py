@@ -1,6 +1,5 @@
 import numpy as np
 
-import pytest
 import dotenv
 
 from strategies.embed_chunks import EmbedChunksStrategy
@@ -10,7 +9,6 @@ from storage import temporary_db
 dotenv.load_dotenv()
 
 
-@pytest.mark.asyncio
 async def test_embed_chunks_strategy():
     strategy = EmbedChunksStrategy()
     assert strategy.NAME == "embed_chunks"

@@ -113,6 +113,13 @@ class Database:
             self.db.commit()
         return new_ids
 
+    def get_chunks_by_document_id(self, document_id: int) -> list[Chunk]:
+        rows = self.cursor.execute(
+            "SELECT * FROM chunks WHERE document_id = ?",
+            (document_id,),
+        ).fetchall()
+        return [Chunk(**row) for row in rows]
+
     # -- Embeddings --
 
     def update_embeddings(self, chunk_ids: list[int], embeddings: np.ndarray):
@@ -215,7 +222,7 @@ def get_db() -> Database:
 
 
 @contextmanager
-def temporary_db(db_name: str):
+def temporary_db(db_name: str = "test"):
     """Context manager to temporarily switch the database."""
 
     global CURRENT_DATABASE

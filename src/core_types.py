@@ -1,6 +1,7 @@
 import datetime
 from enum import StrEnum
-from pydantic import BaseModel
+from typing import Annotated
+from pydantic import BaseModel, Field
 
 
 class TaskStatus(StrEnum):
@@ -13,24 +14,48 @@ class TaskStatus(StrEnum):
 class Task(BaseModel):
     id: int
     strategy: str
-    document_id: str
+    document_id: int
     status: TaskStatus = TaskStatus.PENDING
     args: str
-    parent_id: str | None
-    created_at: datetime.datetime
+    parent_id: int | None = None
+    created_at: Annotated[
+        datetime.datetime, Field(default_factory=datetime.datetime.now)
+    ]
 
 
 class PartialTask(BaseModel):
     strategy: str
-    document_id: str
+    document_id: int
     args: str = ""
     status: TaskStatus = TaskStatus.PENDING
-    parent_id: str | None = None
+    parent_id: int | None = None
 
 
 class Chunk(BaseModel):
     id: int
-    document_id: str
+    document_id: int
     document_order: int
     content: str
-    created_at: datetime.datetime
+    created_at: Annotated[
+        datetime.datetime, Field(default_factory=datetime.datetime.now)
+    ]
+
+
+class PartialChunk(BaseModel):
+    document_id: int
+    document_order: int
+    content: str
+
+
+class Document(BaseModel):
+    id: int
+    urn: str
+    source_id: str
+    created_at: Annotated[
+        datetime.datetime, Field(default_factory=datetime.datetime.now)
+    ]
+
+
+class PartialDocument(BaseModel):
+    urn: str
+    source_id: str

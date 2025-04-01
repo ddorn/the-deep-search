@@ -5,9 +5,13 @@ from pathlib import Path
 from pydantic import BaseModel
 
 from source import Source
-from storage import DATABASE
-from strategies import AutoProcessStrategy, DeleteDocumentStrategy, UpdateDocumentStrategy
-from core_types import PartialTask
+from storage import get_db
+from strategies import (
+    AutoProcessStrategy,
+    DeleteDocumentStrategy,
+    UpdateDocumentStrategy,
+)
+from core_types import PartialTask, PartialDocument
 
 
 class ExtraConfig(BaseModel):
@@ -19,39 +23,48 @@ class DirectorySource(Source[ExtraConfig]):
     EXTRA_CONFIG = ExtraConfig
 
     def add_tasks_from_changes(self):
+        db = get_db()
+
         previous_scan = self._scan_directory(
             self.data_folder, lambda p: open(p).read().trim()
         )
         current_scan = self._scan_directory(
             self.config.path, lambda p: self._hash_file(p)
         )
-        print(current_scan)
 
         for urn in previous_scan:
+            document_id = db.get_document_id_from_urn(urn)
             if urn not in current_scan:
                 # Document deleted
-                DATABASE.create_task(
+                db.create_task(
                     PartialTask(
                         strategy=DeleteDocumentStrategy.NAME,
-                        document_id=urn,
+                        document_id=document_id,
+                        args=self.get_path_from_urn(urn),
                     )
                 )
 
         for urn, current_hash in current_scan.items():
             if urn not in previous_scan:
+                document_id = db.create_document(
+                    PartialDocument(urn=urn, source_id=self.NAME)
+                )
                 # New document
-                DATABASE.create_task(
+                db.create_task(
                     PartialTask(
                         strategy=AutoProcessStrategy.NAME,
-                        document_id=urn,
+                        document_id=document_id,
+                        args=self.get_path_from_urn(urn),
                     )
                 )
             elif previous_scan[urn] != current_hash:
+                document_id = db.get_document_id_from_urn(urn)
                 # Document has changed
-                DATABASE.create_dependent_tasks(
+                db.create_dependent_tasks(
                     PartialTask.create(
                         strategy=UpdateDocumentStrategy.NAME,
-                        document_id=urn,
+                        document_id=document_id,
+                        args=self.get_path_from_urn(urn),
                     ),
                 )
 
@@ -77,4 +90,4 @@ class DirectorySource(Source[ExtraConfig]):
         return f"urn:file:{path}"
 
     def get_path_from_urn(self, urn: str):
-        return urn.replace('urn:file:', '')
+        return urn.replace("urn:file:", "")

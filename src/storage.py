@@ -1,9 +1,18 @@
+from contextlib import contextmanager
 import sqlite3
 import shutil
 
 import numpy as np
 
-from core_types import Chunk, Task, TaskStatus, PartialTask
+from core_types import (
+    Chunk,
+    PartialChunk,
+    Task,
+    TaskStatus,
+    PartialTask,
+    Document,
+    PartialDocument,
+)
 from constants import DIRS
 from logs import logger
 
@@ -17,7 +26,9 @@ class Database:
         self.cursor = self.db.cursor()
         self.migrate()
 
-    def create_task(self, task: PartialTask, commit: bool = True):
+    # -- Tasks --
+
+    def create_task(self, task: PartialTask, commit=True):
         cur = self.cursor.execute(
             "INSERT INTO tasks (strategy, document_id, status, parent_id, args) VALUES (?, ?, ?, ?, ?)",
             (task.strategy, task.document_id, task.status, task.parent_id, task.args),
@@ -35,18 +46,78 @@ class Database:
         ).fetchall()
         return [Task(**task) for task in tasks]
 
-    def get_chunks(self, chunk_ids: list[str]) -> list[Chunk]:
+    # -- Documents --
+
+    def create_document(self, doc: PartialDocument, commit=True):
+        cur = self.cursor.execute(
+            "INSERT INTO documents (urn, source_id) VALUES (?, ?)",
+            (doc.urn, doc.source_id),
+        )
+
+        if commit:
+            self.db.commit()
+
+        return cur.lastrowid
+
+    def get_document_by_id(self, id: str) -> Document | None:
+        row = self.cursor.execute(
+            "SELECT * FROM documents WHERE id = ?",
+            (id,),
+        ).fetchone()
+
+        return Document(**row) if row else None
+
+    def get_document_id_from_urn(self, urn: str) -> int | None:
+        row = self.cursor.execute(
+            "SELECT id FROM documents where urn = ?",
+            (urn,),
+        ).fetchone()
+        return row["id"] if row else None
+
+    # -- Chunks --
+
+    def get_chunks(self, chunk_ids: list[int]) -> list[Chunk]:
         chunks = self.cursor.execute(
-            "SELECT * FROM byproducts WHERE id IN (%s)"
-            % ",".join("?" * len(chunk_ids)),
+            "SELECT * FROM chunks WHERE id IN (%s)" % ",".join("?" * len(chunk_ids)),
             chunk_ids,
         ).fetchall()
-        return [Chunk(**chunk) for chunk in chunks]
 
-    def update_embeddings(self, chunk_ids: list[str], embeddings: np.ndarray):
+        # Debug: show everything in the table
+        if True:
+            all_chunks = self.cursor.execute("SELECT * FROM chunks").fetchall()
+            for chunk in all_chunks:
+                print({**chunk})
+
+        if len(chunks) != len(chunk_ids):
+            missing_ids = set(chunk_ids) - {chunk["id"] for chunk in chunks}
+            raise ValueError(
+                f"Missing chunks for ids: {missing_ids}"
+            )
+
+        # Convert the rows to Chunk objects
+        chunk_dict = {chunk["id"]: Chunk(**chunk) for chunk in chunks}
+
+        # We return the chunks in the order they were requested
+        return [chunk_dict[chunk_id] for chunk_id in chunk_ids]
+
+    def create_chunks(self, chunks: list[PartialChunk], commit=True) -> list[int]:
+        new_ids = []
+        for chunk in chunks:
+            cur = self.cursor.execute(
+                "INSERT INTO chunks (document_id, document_order, content) VALUES (?, ?, ?)",
+                (chunk.document_id, chunk.document_order, chunk.content),
+            )
+            new_ids.append(cur.lastrowid)
+
+        if commit:
+            self.db.commit()
+        return new_ids
+
+    # -- Embeddings --
+
+    def update_embeddings(self, chunk_ids: list[int], embeddings: np.ndarray):
         print(f"Updating embeddings for {len(chunk_ids)} chunks")
         print(chunk_ids, embeddings)
-
 
     # -- Migrations --
 
@@ -70,11 +141,11 @@ class Database:
             raise ValueError(
                 f"Database version {self.version} is higher than the latest migration {len(migrations) + 1}"
             )
-            return
 
-        backup_path = DIRS.user_data_path / f"database-backup-{self.version}.sqlite"
-        logger.info(f"Backing up the database to {backup_path} before migration.")
-        shutil.copy(self.path, backup_path)
+        if self.path != ":memory:":
+            backup_path = DIRS.user_data_path / f"database-backup-{self.version}.sqlite"
+            logger.info(f"Backing up the database to {backup_path} before migration.")
+            shutil.copy(self.path, backup_path)
 
         # Run the migrations
         to_run = migrations[self.version :]
@@ -88,20 +159,10 @@ class Database:
 
     def migrate_0_to_1(self):
         self.cursor.execute(
-            """CREATE TABLE IF NOT EXISTS source (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                type TEXT NOT NULL,
-                name TEXT NOT NULL,
-                attributes BLOB ,
-                UNIQUE(type, name),
-                UNIQUE(name)
-            )"""
-        )
-        self.cursor.execute(
             """CREATE TABLE IF NOT EXISTS documents (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            urn TEXT
-            source_id REFERENCES sources(id) ON DELETE CASCADE,
+            urn TEXT,
+            source_id TEXT,
             created_at TIMESTAMP NOT NULL DEFAULT (DATETIME('now', 'utc')),
             UNIQUE(urn)
         )"""
@@ -141,4 +202,31 @@ class Database:
         )
 
 
-DATABASE = Database(DIRS.user_data_path / "database.sqlite")
+CURRENT_DATABASE: str = "default"
+DATABASES: dict[str, Database] = {
+    CURRENT_DATABASE: Database(DIRS.user_data_path / "database.sqlite")
+}
+
+
+def get_db() -> Database:
+    """Get the current database instance."""
+    print(f"Using database: {CURRENT_DATABASE}")
+    return DATABASES[CURRENT_DATABASE]
+
+
+@contextmanager
+def temporary_db(db_name: str):
+    """Context manager to temporarily switch the database."""
+
+    global CURRENT_DATABASE
+    original_db = CURRENT_DATABASE
+    assert db_name not in DATABASES, f"Database {db_name} already exists."
+
+    try:
+        DATABASES[db_name] = Database(":memory:")
+        CURRENT_DATABASE = db_name
+        yield DATABASES[db_name]
+    finally:
+        CURRENT_DATABASE = original_db
+        DATABASES[db_name].db.close()
+        del DATABASES[db_name]

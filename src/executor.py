@@ -4,7 +4,7 @@ import random
 
 from strategies.strategy import Strategy, collect_built_in_strategies
 from core_types import Task
-from storage import DATABASE
+from storage import get_db
 from logs import logger
 
 class Executor:
@@ -37,8 +37,10 @@ class Executor:
         # 3. Process the task
         # 4. Repeat
 
+        db = get_db()
+
         while True:
-            tasks = DATABASE.get_pending_tasks()
+            tasks = db.get_pending_tasks()
             logger.debug(f"Found {len(tasks)} tasks to run")
             if not tasks:
                 await asyncio.sleep(1)

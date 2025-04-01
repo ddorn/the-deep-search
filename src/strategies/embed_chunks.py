@@ -1,7 +1,7 @@
 import openai
 from core_types import Task
 from strategies.strategy import Strategy
-from storage import DATABASE
+from storage import get_db
 import numpy as np
 
 
@@ -17,11 +17,14 @@ class EmbedChunksStrategy(Strategy):
         super().__init__()
         self.openai = openai.AsyncClient()
 
-    async def process_all(self, tasks: list[Task]) -> None:
-        chunk_ids = [task.args for task in tasks]
-        chunks = DATABASE.get_chunks(chunk_ids)
+    async def process_all(self, tasks: list[Task]):
+        db = get_db()
+
+        chunk_ids = [int(task.args) for task in tasks]
+        chunks = db.get_chunks(chunk_ids)
         texts = [chunk.content for chunk in chunks]
 
+        print(texts)
         response = await self.openai.embeddings.create(
             dimensions=self.EMBEDDING_DIMENSIONS,
             model="text-embedding-3-small",
@@ -32,4 +35,6 @@ class EmbedChunksStrategy(Strategy):
         for embedding in response.data:
             embeddings[embedding.index] = embedding.embedding
 
-        DATABASE.update_embeddings(chunk_ids, embeddings)
+        db.update_embeddings(chunk_ids, embeddings)
+
+        return embeddings

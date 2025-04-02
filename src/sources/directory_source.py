@@ -1,9 +1,7 @@
 import hashlib
-import os
 from pathlib import Path
-from typing import Annotated
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from gitignore_filter import git_ignore_filter
 
 from strategies.strategy import Source
@@ -13,7 +11,7 @@ from strategies import (
     DeleteDocumentStrategy,
     UpdateDocumentStrategy,
 )
-from core_types import PartialByproduct, PartialTask, PartialDocument
+from core_types import PartialTask, PartialDocument
 from logs import logger
 
 

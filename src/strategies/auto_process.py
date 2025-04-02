@@ -1,3 +1,4 @@
+import mimetypes
 import os
 from storage import get_db
 from core_types import Task, PartialTask
@@ -18,30 +19,27 @@ class AutoProcessStrategy(Strategy):
 
     async def process_all(self, tasks: list[Task]) -> None:
         for task in tasks:
-            assert (
-                task.strategy == self.NAME
-            )  # Executor gave a task belonging to another strategy
-            path = task.args
-            _, ext = os.path.splitext(path)
-            if ext.startswith("."):
-                ext = ext[1:]
+            assert task.strategy == self.NAME
+            self.process(task)
 
-            # We could get smart here and look at magic numbers,
-            # entropy... this is especially relevant for text files.
-            self.process(task, ext, path)
-
-    def process(self, task: Task, ext: str, path: str):
+    def process(self, task: Task):
         db = get_db()
-        if ext in ["md", "txt"]:
+        mimetype, encoding = mimetypes.guess_type(task.args)
+
+        if encoding is None:
+            raise ValueError(f"Can't determine actions for task {task} with encoding={encoding}")
+
+        if mimetype is None:
+            raise ValueError(f"Can't determine actions for task {task} with mimetype={mimetype}")
+
+        if mimetype.startswith("text/"):
             db.create_task(
                 PartialTask(
                     strategy=ChunkFromTextStrategy.NAME,
                     document_id=task.document_id,
-                    args=path,
+                    args=task.args,
                     parent_id=task.id,
                 )
             )
         else:
-            raise ValueError(
-                f"Could not autoprocess task {task.id} with ext={ext} and path={path}"
-            )
+            raise ValueError(f"Can't determine actions for task {task} with mimetype={mimetype}")

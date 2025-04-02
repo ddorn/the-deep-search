@@ -68,6 +68,9 @@ class DirectorySource(Source[DirectorySourceConfig]):
                     ),
                 )
 
+    def on_mount(self):
+        self.add_tasks_from_changes()
+
     def _scan_directory(self, root: str, fn):
         map = {}
         for top, dirs, files in os.walk(root):

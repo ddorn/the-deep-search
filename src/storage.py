@@ -51,17 +51,18 @@ class Database:
         ).fetchall()
         return [Task(**task) for task in tasks]
 
+    def set_task_status(self, status: TaskStatus, task_ids: list[int]):
+        self.cursor.execute(
+            "UPDATE tasks SET status = ? WHERE id IN (%s)" % ",".join("?" * len(task_ids)),
+            [status] + task_ids,
+        )
+        self.db.commit()
+
     def restart_crashed_tasks(self):
-        tasks = self.cursor.execute(
-            "SELECT id FROM tasks WHERE status = ?",
-            (TaskStatus.IN_PROGRESS,),
-        ).fetchall()
-        for task in tasks:
-            # Restart the task
-            self.cursor.execute(
-                "UPDATE tasks SET status = ? WHERE id = ?",
-                (TaskStatus.PENDING, task["id"]),
-            )
+        self.cursor.execute(
+            "UPDATE tasks SET status = ? WHERE status = ?",
+            (TaskStatus.PENDING, TaskStatus.IN_PROGRESS),
+        )
         self.db.commit()
 
     # -- Documents --

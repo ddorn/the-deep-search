@@ -7,7 +7,7 @@ from config import Config
 from sources import BUILT_IN_SOURCES
 from strategies import BUILT_IN_STRATEGIES
 from strategies.strategy import Source, Strategy
-from core_types import Task
+from core_types import Task, TaskStatus
 from storage import Database, get_db
 from logs import logger
 
@@ -17,6 +17,7 @@ class Executor:
         self.config = config
         self.sources: dict[str, Source] = {}
         self.strategies: dict[str, Strategy] = {}
+        self.db = get_db()
 
     def register_strategy(self, strategy: type[Strategy]):
         if strategy.NAME in self.strategies:
@@ -77,17 +78,17 @@ class Executor:
         assert len(strategies) == 1, f"Tasks have different strategies: {strategies}"
         strategy = self.strategies[strategies.pop()]
 
-        if strategy.NAME not in self.strategies_instances:
-            self.strategies_instances[strategy.NAME] = strategy()
 
-        strategy_instance = self.strategies_instances[strategy.NAME]
-        await strategy_instance.process_all(tasks)
+        logger.debug(f"Running {len(tasks)} tasks for strategy '{strategy.NAME}'")
+        task_ids = [task.id for task in tasks]
+        self.db.set_task_status(TaskStatus.IN_PROGRESS, task_ids)
+        await strategy.process_all(tasks)
+        self.db.set_task_status(TaskStatus.DONE, task_ids)
 
     async def new_main(self):
-        db = get_db()
 
         # Delete entries that are not in the new config
-        self.apply_config_changes(self.config, db)
+        self.apply_config_changes(self.config)
 
         # Load all sources
         for name, source_config in self.config.sources.items():
@@ -101,14 +102,14 @@ class Executor:
             parsed_config = strategy_class.CONFIG_TYPE.model_validate(raw_config)
             self.strategies[name] = strategy_class(parsed_config)
 
-        db.restart_crashed_tasks()
+        self.db.restart_crashed_tasks()
 
         # Mount all sources & strategies
         with self.mount_all():
 
             # Run the main loop
             while True:
-                tasks = db.get_pending_tasks()
+                tasks = self.db.get_pending_tasks()
                 logger.debug(f"Found {len(tasks)} tasks to run")
                 if not tasks:
                     await asyncio.sleep(1)
@@ -129,21 +130,21 @@ class Executor:
 
             yield
 
-    def apply_config_changes(self, new_config: Config, db: Database) -> None:
+    def apply_config_changes(self, new_config: Config) -> None:
         """
         Apply the changes in the new config to the old config.
         - This removes documents from sources that are not in the new config.
         - Then save the new config to the database.
         """
 
-        old_config = db.get_last_config()
+        old_config = self.db.get_last_config()
         if old_config is None or old_config == new_config:
             return
 
         # Remove sources that are not in the new config
         for source_name in set(old_config.sources) - set(new_config.sources):
-            for doc in db.get_documents_from_source(source_name):
-                db.delete_document(doc.id)
+            for doc in self.db.get_documents_from_source(source_name):
+                self.db.delete_document(doc.id)
 
         # Save the new config
-        db.save_config(new_config)
+        self.db.save_config(new_config)

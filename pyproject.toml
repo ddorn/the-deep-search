@@ -8,6 +8,7 @@ dependencies = [
     "aiohttp>=3.11.11",
     #"deepgram-sdk>=3.8.0",
     "fastapi>=0.115.8",
+    "gitignore-filter>=0.2.3",
     "joblib>=1.4.2",
     "openai>=1.60.2",
     "platformdirs>=4.3.7",

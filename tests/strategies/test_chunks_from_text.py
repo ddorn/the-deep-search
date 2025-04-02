@@ -1,10 +1,9 @@
 from pathlib import Path
-import numpy as np
 
 import dotenv
 
 from strategies.chunks_from_text import ChunkFromTextStrategy
-from core_types import PartialChunk, PartialDocument, Task
+from core_types import Task
 from storage import temporary_db
 
 dotenv.load_dotenv()
@@ -21,7 +20,7 @@ async def test_chunks_from_text_strategy(tmp_path: Path):
 
     doc_path = tmp_path / "doc.txt"
     doc_path.write_text(doc)
-    doc_id = 1
+    doc_id = 142
 
     task = Task(
         id=-1,
@@ -34,13 +33,13 @@ async def test_chunks_from_text_strategy(tmp_path: Path):
         await strategy.process_all([task])
 
         chunks = db.get_chunks_by_document_id(doc_id)
+
         assert len(chunks) > 0
-
-        chunk_lengths = [len(chunk.content) for chunk in chunks]
-        assert all(length > 0 for length in chunk_lengths)
-        assert all(length < 2000 for length in chunk_lengths)
-
-        text_from_chunks = "\n".join(chunk.content for chunk in chunks)
+        for i, chunk in enumerate(chunks):
+            assert chunk.document_id == doc_id
+            assert chunk.document_order == i
+            assert 0 < len(chunk.content) < 2000
 
         # Length should be +- 10% of the original text
+        text_from_chunks = "\n".join(chunk.content for chunk in chunks)
         assert abs(len(text_from_chunks) - len(doc)) / len(doc) < 0.1, f"Text length mismatch: {len(text_from_chunks)} vs {len(doc)}"

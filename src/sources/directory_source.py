@@ -4,7 +4,7 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
-from source import Source
+from strategies.strategy import Source
 from storage import get_db
 from strategies import (
     AutoProcessStrategy,
@@ -14,13 +14,13 @@ from strategies import (
 from core_types import PartialTask, PartialDocument
 
 
-class ExtraConfig(BaseModel):
+class DirectorySourceConfig(BaseModel):
     path: Path
 
 
-class DirectorySource(Source[ExtraConfig]):
+class DirectorySource(Source[DirectorySourceConfig]):
     NAME = "local-files"
-    EXTRA_CONFIG = ExtraConfig
+    CONFIG_TYPE = DirectorySourceConfig
 
     def add_tasks_from_changes(self):
         db = get_db()

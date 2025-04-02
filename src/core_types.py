@@ -59,3 +59,12 @@ class Document(BaseModel):
 class PartialDocument(BaseModel):
     urn: str
     source_id: str
+
+
+class Byproduct(BaseModel):
+    id: int
+    document_id: int
+    content: str
+    created_at: Annotated[
+        datetime.datetime, Field(default_factory=datetime.datetime.now)
+    ]

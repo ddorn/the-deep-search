@@ -13,7 +13,7 @@ async def test_embed_chunks_strategy():
     strategy = EmbedChunksStrategy()
     assert strategy.NAME == "embed_chunks"
 
-    with temporary_db("test") as db:
+    with temporary_db() as db:
         # Need to create chunks in the temporary database
         ids = db.create_chunks([
             PartialChunk(
@@ -24,7 +24,6 @@ async def test_embed_chunks_strategy():
             for i in range(3)
         ])
 
-        print("Chunk IDs:", ids)
         # Create a task for each chunk
         tasks = [
             Task(
@@ -37,7 +36,7 @@ async def test_embed_chunks_strategy():
         ]
 
         # Process the tasks
-        embedings = await strategy.process_all(tasks)
+        embeddings = await strategy.process_all(tasks)
 
-        assert embedings.shape == (len(tasks), strategy.EMBEDDING_DIMENSIONS)
-        assert embedings.dtype == np.float32
+        assert embeddings.shape == (len(tasks), strategy.EMBEDDING_DIMENSIONS)
+        assert embeddings.dtype == np.float32

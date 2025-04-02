@@ -1,12 +1,67 @@
+from contextlib import contextmanager
+from functools import cached_property
 from importlib import import_module
+import importlib
+import importlib.util
 from pathlib import Path
 import abc
 from typing import ClassVar
 
+from openai import BaseModel
+
+from constants import DIRS
 from core_types import Task
 
 
-class Strategy:
+class NoConfig(BaseModel):
+    pass
+
+
+class Module[ConfigType: BaseModel](abc.ABC):
+    NAME: ClassVar[str]
+    CONFIG_TYPE: type[ConfigType] = NoConfig  # noqa: ignore[assignment]
+
+    def __init__(self, config: ConfigType):
+        self.config = config
+
+    def data_folder_name(self) -> str:
+        """
+        The name of the folder where the module stores its data.
+        """
+        return self.NAME
+
+    @cached_property
+    def data_folder(self) -> Path:
+        folder = DIRS.user_data_path / "modules" / self.data_folder_name()
+        folder.mkdir(parents=True, exist_ok=True)
+        return folder
+
+    @contextmanager
+    def mount(self):
+        """
+        Context manager to mount and unmount the module on exit.
+        """
+
+        self.on_mount()
+        try:
+            yield
+        finally:
+            self.on_unmount()
+
+    def on_mount(self):
+        """
+        Called when the module is mounted.
+        """
+        pass
+
+    def on_unmount(self):
+        """
+        Called when the module is unmounted.
+        """
+        pass
+
+
+class Strategy[ConfigType: BaseModel](Module[ConfigType]):
     """
     A strategy describes how to do a specific type of task.
     """
@@ -16,7 +71,9 @@ class Strategy:
     MAX_BATCH_SIZE: ClassVar[int]
     RESOURCES: ClassVar[list[str]]
 
-    def __post_init__(self):
+    def __init__(self, config: ConfigType):
+        super().__init__(config)
+
         for attribute in ["NAME", "PRIORITY", "MAX_BATCH_SIZE", "RESOURCES"]:
             if not hasattr(self, attribute):
                 raise ValueError(f"Strategy {self.__class__.__name__} must have a {attribute} attribute")
@@ -26,14 +83,11 @@ class Strategy:
         ...
 
 
-def collect_built_in_strategies() -> dict[str, type[Strategy]]:
-    strategies = {}
+class Source[ConfigType: BaseModel](Module[ConfigType]):
 
-    for path in Path(__file__).parent.rglob("*.py"):
-        module = import_module(f".{path.stem}", __package__)
-        for attribute in dir(module):
-            obj = getattr(module, attribute)
-            if isinstance(obj, type) and issubclass(obj, Strategy) and obj != Strategy:
-                strategies[obj.NAME] = obj
+    def __init__(self, config: ConfigType, title: str):
+        super().__init__(config)
+        self.title = title
 
-    return strategies
+    def data_folder_name(self):
+        return self.title

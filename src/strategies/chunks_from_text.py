@@ -10,7 +10,8 @@ from storage import get_db
 PROMPT = """
 This part the automated pipeline, splits text into chunks of 2-6 sentences each.
 
-Ouptut the chunks in a JSON array, with each chunk being a string, e.g.:
+Output the chunks in a JSON array, with each chunk being a string, e.g.:
+
 [
     "This is the first chunk.",
     "This is the second chunk.",
@@ -30,8 +31,8 @@ class ChunkFromTextStrategy(Strategy):
     RESOURCES = ["openai"]
     MODEL = "gpt-4o-mini"
 
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, config) -> None:
+        super().__init__(config)
         self.openai = openai.AsyncClient()
 
     async def process_all(self, tasks: list[Task]) -> None:

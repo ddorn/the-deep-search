@@ -1,9 +1,12 @@
 from contextlib import contextmanager
+from pathlib import Path
 import sqlite3
 import shutil
 
 import numpy as np
+from pydantic import BaseModel
 
+from config import Config, get_config
 from core_types import (
     Chunk,
     PartialChunk,
@@ -20,6 +23,8 @@ from logs import logger
 class Database:
     def __init__(self, path):
         self.path = path
+        self.config = get_config()
+
         logger.debug(f"Using database at {self.path}")
         self.db = sqlite3.connect(self.path)
         self.db.row_factory = sqlite3.Row
@@ -45,6 +50,19 @@ class Database:
             (TaskStatus.PENDING,),
         ).fetchall()
         return [Task(**task) for task in tasks]
+
+    def restart_crashed_tasks(self):
+        tasks = self.cursor.execute(
+            "SELECT id FROM tasks WHERE status = ?",
+            (TaskStatus.IN_PROGRESS,),
+        ).fetchall()
+        for task in tasks:
+            # Restart the task
+            self.cursor.execute(
+                "UPDATE tasks SET status = ? WHERE id = ?",
+                (TaskStatus.PENDING, task["id"]),
+            )
+        self.db.commit()
 
     # -- Documents --
 
@@ -73,6 +91,38 @@ class Database:
             (urn,),
         ).fetchone()
         return row["id"] if row else None
+
+    def get_documents_from_source(self, source_id: str) -> list[Document]:
+        rows = self.cursor.execute(
+            "SELECT * FROM documents WHERE source_id = ?",
+            (source_id,),
+        ).fetchall()
+        return [Document(**row) for row in rows]
+
+    def delete_document(self, id: int):
+        # Get all the byproducts for the document
+        byproducts = self.cursor.execute(
+            "SELECT * FROM byproducts WHERE document_id = ?",
+            (id,),
+        ).fetchall()
+
+        # Delete the files associated with the byproducts
+        for byproduct in byproducts:
+            path = Path(byproduct["path"])
+            if path and path.exists():
+                # Assert path is in the data directory
+                if DIRS.user_data_path in path.resolve().parents:
+                    raise ValueError(f"Byproduct file {path} is not in the data directory.")
+                logger.debug(f"Deleting byproduct file: {path}")
+                path.unlink()
+
+        self.cursor.execute(
+            "DELETE FROM documents WHERE id = ?",
+            (id,),
+        )
+        self.db.commit()
+
+        # TODO: Also delete the chunk embeddings for the document
 
     # -- Chunks --
 
@@ -125,6 +175,21 @@ class Database:
     def update_embeddings(self, chunk_ids: list[int], embeddings: np.ndarray):
         print(f"Updating embeddings for {len(chunk_ids)} chunks")
         print(chunk_ids, embeddings)
+
+    # -- Config --
+
+    def save_config(self, config: Config):
+        self.cursor.execute(
+            "INSERT INTO config (config) VALUES (?)",
+            (config.model_dump_json(),),
+        )
+        self.db.commit()
+
+    def get_last_config(self) -> Config | None:
+        row = self.cursor.execute(
+            "SELECT * FROM config ORDER BY created_at DESC LIMIT 1"
+        ).fetchone()
+        return Config.model_validate_json(row["config"]) if row else None
 
     # -- Migrations --
 
@@ -208,6 +273,14 @@ class Database:
         )"""
         )
 
+        self.cursor.execute(
+            """CREATE TABLE IF NOT EXISTS config (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            config TEXT,
+            created_at TIMESTAMP NOT NULL DEFAULT (DATETIME('now', 'utc'))
+        )"""
+        )
+
 
 CURRENT_DATABASE: str = "default"
 DATABASES: dict[str, Database] = {
@@ -217,7 +290,6 @@ DATABASES: dict[str, Database] = {
 
 def get_db() -> Database:
     """Get the current database instance."""
-    print(f"Using database: {CURRENT_DATABASE}")
     return DATABASES[CURRENT_DATABASE]
 
 

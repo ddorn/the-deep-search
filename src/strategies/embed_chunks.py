@@ -13,8 +13,8 @@ class EmbedChunksStrategy(Strategy):
 
     EMBEDDING_DIMENSIONS = 1536
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, config):
+        super().__init__(config)
         self.openai = openai.AsyncClient()
 
     async def process_all(self, tasks: list[Task]):
@@ -24,7 +24,6 @@ class EmbedChunksStrategy(Strategy):
         chunks = db.get_chunks(chunk_ids)
         texts = [chunk.content for chunk in chunks]
 
-        print(texts)
         response = await self.openai.embeddings.create(
             dimensions=self.EMBEDDING_DIMENSIONS,
             model="text-embedding-3-small",

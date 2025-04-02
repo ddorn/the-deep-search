@@ -1,6 +1,7 @@
 # %%
+from typing import Annotated
 from yaml import safe_load
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 example_config = """
@@ -22,8 +23,13 @@ class SourceConfig(BaseModel):
     args: dict
 
 class Config(BaseModel):
-    sources: dict[str, SourceConfig]
+    sources: Annotated[dict[str, SourceConfig], Field(default_factory=dict)]
+    strategies: Annotated[dict[str, dict], Field(default_factory=dict)]
 
 
 def get_config() -> Config:
     return Config.model_validate(safe_load(example_config))
+
+def load_config(path: str) -> Config:
+    with open(path, "r") as f:
+        return Config.model_validate(safe_load(f))

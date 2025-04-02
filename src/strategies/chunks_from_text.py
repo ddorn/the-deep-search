@@ -23,13 +23,18 @@ class ResponseModel(BaseModel):
     chunks: list[str]
 
 
+class ChunkFromTextConfig(BaseModel):
+    model: str = "gpt-4o-mini"
+    chars_per_chunk: int | None = None
 
-class ChunkFromTextStrategy(Strategy):
+
+class ChunkFromTextStrategy(Strategy[ChunkFromTextConfig]):
     NAME = "chunk_from_text"
     PRIORITY = 0
     MAX_BATCH_SIZE = 1
     RESOURCES = ["openai"]
-    MODEL = "gpt-4o-mini"
+
+    CONFIG_TYPE = ChunkFromTextConfig
 
     def __init__(self, config) -> None:
         super().__init__(config)
@@ -53,8 +58,14 @@ class ChunkFromTextStrategy(Strategy):
             ])
 
     async def chunk_text(self, text: str) -> list[str]:
+        if self.config.chars_per_chunk:
+            return self.chunk_text_by_chars(text, self.config.chars_per_chunk)
+        else:
+            return await self.llm_chunk_text(text)
+
+    async def llm_chunk_text(self, text: str) -> list[str]:
         response = await self.openai.beta.chat.completions.parse(
-            model=self.MODEL,
+            model=self.config.model,
             messages=[
                 dict(role="system", content=PROMPT),
                 dict(role="user", content=text),
@@ -66,3 +77,20 @@ class ChunkFromTextStrategy(Strategy):
         assert chunks is not None
 
         return chunks.chunks
+
+    def chunk_text_by_chars(self, text: str, chunk_size: int) -> list[str]:
+        """
+        Splits the text into chunks of a given size.
+        The last chunk can be ±50% of the chunk size.
+        """
+
+        chunks = []
+        for i in range(0, len(text), chunk_size):
+            chunks.append(text[i:i + chunk_size])
+
+        if len(chunks) > 2 and len(chunks[-1]) < chunk_size // 2:
+            # Merge the last chunk with the previous one
+            chunks[-2] += chunks[-1]
+            chunks.pop()
+
+        return chunks

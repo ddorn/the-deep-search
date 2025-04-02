@@ -38,7 +38,7 @@ class DirectorySource(Source[DirectorySourceConfig]):
             urn = self.get_urn_for_path(path)
             past_documents_urn.discard(urn)
 
-            hashed_document = self._hash_file(path)
+            hashed_document = self._hash_file(self.config.path / path)
             last_hash = self.read_hash(urn)
 
             if last_hash is None:
@@ -61,7 +61,6 @@ class DirectorySource(Source[DirectorySourceConfig]):
             PartialTask(
                 strategy=DeleteDocumentStrategy.NAME,
                 document_id=document_id,
-                args=str(path),
             )
         )
 
@@ -78,7 +77,7 @@ class DirectorySource(Source[DirectorySourceConfig]):
             PartialTask(
                 strategy=AutoProcessStrategy.NAME,
                 document_id=document_id,
-                args=str(self.get_path_from_urn(urn)),
+                args=str(self.config.path / path),
             )
         )
 
@@ -95,7 +94,7 @@ class DirectorySource(Source[DirectorySourceConfig]):
             PartialTask(
                 strategy=UpdateDocumentStrategy.NAME,
                 document_id=document_id,
-                args=str(self.get_path_from_urn(urn)),
+                args=str(self.config.path / path),
             )
         )
 

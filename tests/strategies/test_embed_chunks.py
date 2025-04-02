@@ -38,5 +38,5 @@ async def test_embed_chunks_strategy():
         # Process the tasks
         embeddings = await strategy.process_all(tasks)
 
-        assert embeddings.shape == (len(tasks), strategy.EMBEDDING_DIMENSIONS)
+        assert embeddings.shape == (len(tasks), db.config.global_config.embedding_dimension)
         assert embeddings.dtype == np.float32

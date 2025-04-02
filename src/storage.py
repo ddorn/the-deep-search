@@ -1,12 +1,12 @@
 from contextlib import contextmanager
+import json
 from pathlib import Path
 import sqlite3
 import shutil
 
 import numpy as np
-from pydantic import BaseModel
 
-from config import Config, get_config
+from config import Config
 from core_types import (
     Chunk,
     PartialByproduct,
@@ -22,9 +22,9 @@ from logs import logger
 
 
 class Database:
-    def __init__(self, path):
+    def __init__(self, path: str | Path, config: Config):
         self.path = path
-        self.config = get_config()
+        self.config = config
 
         logger.debug(f"Using database at {self.path}")
         self.db = sqlite3.connect(self.path)
@@ -101,11 +101,22 @@ class Database:
         ).fetchall()
         return [Document(**row) for row in rows]
 
-    def delete_document(self, id: int):
-        # Get all the byproducts for the document
+    def delete_documents(self, document_ids: list[int]):
+        # We want to be slightly careful here, to live a correct state if the task fails in the middle.
+
+        # 1. Delete all related embeddings
+        chunks = self.cursor.execute(
+            "SELECT id FROM chunks WHERE document_id IN (%s)" % ",".join("?" * len(document_ids)),
+            document_ids,
+        ).fetchall()
+        chunk_ids = [chunk["id"] for chunk in chunks]
+
+        self.delete_embeddings(chunk_ids)
+
+        # 2. Delete all the byproducts (in the filesystem, then from the database)
         byproducts = self.cursor.execute(
-            "SELECT * FROM byproducts WHERE document_id = ?",
-            (id,),
+            "SELECT path FROM byproducts WHERE document_id IN (%s)" % ",".join("?" * len(document_ids)),
+            document_ids,
         ).fetchall()
 
         # Delete the files associated with the byproducts
@@ -113,18 +124,24 @@ class Database:
             path = Path(byproduct["path"])
             if path and path.exists():
                 # Assert path is in the data directory
-                if DIRS.user_data_path in path.resolve().parents:
-                    raise ValueError(f"Byproduct file {path} is not in the data directory.")
-                logger.debug(f"Deleting byproduct file: {path}")
+                if DIRS.user_data_path not in path.resolve().parents:
+                    raise ValueError(f"Byproduct file '{path}' is not in the data directory.")
+                logger.debug(f"Deleting byproduct file: '{path}'")
                 path.unlink()
 
+        # Delete the byproducts from the database
         self.cursor.execute(
-            "DELETE FROM documents WHERE id = ?",
-            (id,),
+            "DELETE FROM byproducts WHERE document_id IN (%s)" % ",".join("?" * len(document_ids)),
+            document_ids,
         )
-        self.db.commit()
 
-        # TODO: Also delete the chunk embeddings for the document
+        # 3. Delete the documents and all related data
+        self.cursor.execute(
+            "DELETE FROM documents WHERE id IN (%s)" % ",".join("?" * len(document_ids)),
+            document_ids,
+        )
+
+        self.db.commit()
 
     # -- Byproducts --
 
@@ -146,12 +163,6 @@ class Database:
             "SELECT * FROM chunks WHERE id IN (%s)" % ",".join("?" * len(chunk_ids)),
             chunk_ids,
         ).fetchall()
-
-        # Debug: show everything in the table
-        if True:
-            all_chunks = self.cursor.execute("SELECT * FROM chunks").fetchall()
-            for chunk in all_chunks:
-                print({**chunk})
 
         if len(chunks) != len(chunk_ids):
             missing_ids = set(chunk_ids) - {chunk["id"] for chunk in chunks}
@@ -187,9 +198,42 @@ class Database:
 
     # -- Embeddings --
 
+    # Embeddings are stored in 2 files:
+    # - embeddings.json: Keeps a mapping of chunk_id to index in the embeddings array
+    # - embeddings.npy: The embedding array, shape (n_chunks, embedding_dim)
+
+    def load_embeddings(self) -> tuple[np.ndarray, dict[int, int]]:
+        try:
+            embeddings = np.load(DIRS.user_data_path / "embeddings.npy")
+            chunk_to_idx = json.loads((DIRS.user_data_path / "embeddings.json").read_text())
+        except FileNotFoundError:
+            embeddings = np.zeros((0, self.config.global_config.embedding_dimension), dtype=np.float32)
+            chunk_to_idx = {}
+
+        assert embeddings.shape[0] == len(chunk_to_idx), "Embeddings and chunk_to_idx length mismatch"
+        return embeddings, chunk_to_idx
+
+    def overwrite_embeddings_files(self, embeddings: np.ndarray, chunk_to_idx: dict[int, int]):
+        assert len(embeddings) == len(chunk_to_idx), "Embeddings and chunk_to_idx length mismatch"
+        np.save(DIRS.user_data_path / "embeddings.npy", embeddings)
+        (DIRS.user_data_path / "embeddings.json").write_text(json.dumps(chunk_to_idx))
+
     def update_embeddings(self, chunk_ids: list[int], embeddings: np.ndarray):
-        print(f"Updating embeddings for {len(chunk_ids)} chunks")
-        print(chunk_ids, embeddings)
+        current_embeddings, chunk_to_idx = self.load_embeddings()
+
+        embedding_indices = [chunk_to_idx[chunk_id] for chunk_id in chunk_ids if chunk_id in chunk_to_idx]
+        current_embeddings[embedding_indices] = embeddings
+
+        self.overwrite_embeddings_files(current_embeddings, chunk_to_idx)
+
+    def delete_embeddings(self, chunk_ids: list[int]):
+        embeddings, chunk_to_idx = self.load_embeddings()
+
+        # Remove the embeddings for the chunks (with .pop())
+        embedding_indices = [chunk_to_idx.pop(chunk_id) for chunk_id in chunk_ids if chunk_id in chunk_to_idx]
+        embeddings = np.delete(embeddings, embedding_indices, axis=0)
+
+        self.overwrite_embeddings_files(embeddings, chunk_to_idx)
 
     # -- Config --
 
@@ -297,10 +341,8 @@ class Database:
         )
 
 
-CURRENT_DATABASE: str = "default"
-DATABASES: dict[str, Database] = {
-    CURRENT_DATABASE: Database(DIRS.user_data_path / "database.sqlite")
-}
+CURRENT_DATABASE: str = None
+DATABASES: dict[str, Database] = {}
 
 
 def get_db() -> Database:
@@ -308,16 +350,28 @@ def get_db() -> Database:
     return DATABASES[CURRENT_DATABASE]
 
 
+def set_db(db_name: str, db: Database):
+    """Set the current database instance."""
+    global CURRENT_DATABASE
+
+    if db_name in DATABASES:
+        raise ValueError(f"Database {db_name} already exists.")
+
+    DATABASES[db_name] = db
+    CURRENT_DATABASE = db_name
+
 @contextmanager
-def temporary_db(db_name: str = "test"):
+def temporary_db(db_name: str = "test", config: Config | None = None):
     """Context manager to temporarily switch the database."""
 
     global CURRENT_DATABASE
     original_db = CURRENT_DATABASE
     assert db_name not in DATABASES, f"Database {db_name} already exists."
+    if config is None:
+        config = Config()
 
     try:
-        DATABASES[db_name] = Database(":memory:")
+        DATABASES[db_name] = Database(":memory:", config)
         CURRENT_DATABASE = db_name
         yield DATABASES[db_name]
     finally:

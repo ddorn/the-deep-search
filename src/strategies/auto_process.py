@@ -26,7 +26,7 @@ class AutoProcessStrategy(Strategy):
         db = get_db()
         mimetype, encoding = mimetypes.guess_type(task.args)
 
-        if encoding is None:
+        if encoding is not None:
             raise ValueError(f"Can't determine actions for task {task} with encoding={encoding}")
 
         if mimetype is None:

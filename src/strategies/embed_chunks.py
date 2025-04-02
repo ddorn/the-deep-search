@@ -11,8 +11,6 @@ class EmbedChunksStrategy(Strategy):
     MAX_BATCH_SIZE = 100
     RESOURCES = ["openai"]
 
-    EMBEDDING_DIMENSIONS = 1536
-
     def __init__(self, config):
         super().__init__(config)
         self.openai = openai.AsyncClient()
@@ -25,12 +23,12 @@ class EmbedChunksStrategy(Strategy):
         texts = [chunk.content for chunk in chunks]
 
         response = await self.openai.embeddings.create(
-            dimensions=self.EMBEDDING_DIMENSIONS,
+            dimensions=db.config.global_config.embedding_dimension,
             model="text-embedding-3-small",
             input=texts,
         )
 
-        embeddings = np.zeros((len(texts), self.EMBEDDING_DIMENSIONS), dtype=np.float32)
+        embeddings = np.zeros((len(texts), db.config.global_config.embedding_dimension), dtype=np.float32)
         for embedding in response.data:
             embeddings[embedding.index] = embedding.embedding
 

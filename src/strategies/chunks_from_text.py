@@ -2,8 +2,9 @@ from pathlib import Path
 
 import openai
 from pydantic import BaseModel
-from core_types import PartialChunk, Task
+from core_types import PartialChunk, PartialTask, Task, TaskStatus
 from strategies.strategy import Strategy
+from strategies.embed_chunks import EmbedChunksStrategy
 from storage import get_db
 
 
@@ -48,7 +49,7 @@ class ChunkFromTextStrategy(Strategy[ChunkFromTextConfig]):
             text = path.read_text()
             chunks = await self.chunk_text(text)
 
-            db.create_chunks([
+            ids = db.create_chunks([
                 PartialChunk(
                     document_id=task.document_id,
                     document_order=i,
@@ -56,6 +57,15 @@ class ChunkFromTextStrategy(Strategy[ChunkFromTextConfig]):
                 )
                 for i, chunk in enumerate(chunks)
             ])
+
+            for chunk_id in ids:
+                db.create_task(PartialTask(
+                    strategy=EmbedChunksStrategy.NAME,
+                    document_id=task.document_id,
+                    args=str(chunk_id),
+                    status=TaskStatus.PENDING,
+                    parent_id=task.id,
+                ))
 
     async def chunk_text(self, text: str) -> list[str]:
         if self.config.chars_per_chunk:

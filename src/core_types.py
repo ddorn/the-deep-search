@@ -1,5 +1,6 @@
 import datetime
 from enum import StrEnum
+from pathlib import Path
 from typing import Annotated
 from pydantic import BaseModel, Field
 
@@ -11,13 +12,8 @@ class TaskStatus(StrEnum):
     BLOCKED = "blocked"
 
 
-class Task(BaseModel):
+class DBModel(BaseModel):
     id: int
-    strategy: str
-    document_id: int
-    status: TaskStatus = TaskStatus.PENDING
-    args: str
-    parent_id: int | None = None
     created_at: Annotated[
         datetime.datetime, Field(default_factory=datetime.datetime.now)
     ]
@@ -31,40 +27,30 @@ class PartialTask(BaseModel):
     parent_id: int | None = None
 
 
-class Chunk(BaseModel):
-    id: int
-    document_id: int
-    document_order: int
-    content: str
-    created_at: Annotated[
-        datetime.datetime, Field(default_factory=datetime.datetime.now)
-    ]
-
+class Task(PartialTask, DBModel):
+    pass
 
 class PartialChunk(BaseModel):
     document_id: int
     document_order: int
     content: str
 
+class Chunk(PartialChunk, DBModel):
+    pass
 
-class Document(BaseModel):
-    id: int
-    urn: str
-    source_id: str
-    created_at: Annotated[
-        datetime.datetime, Field(default_factory=datetime.datetime.now)
-    ]
 
 
 class PartialDocument(BaseModel):
     urn: str
     source_id: str
 
+class Document(PartialDocument, DBModel):
+    pass
 
-class Byproduct(BaseModel):
-    id: int
+
+class PartialByproduct(BaseModel):
     document_id: int
-    content: str
-    created_at: Annotated[
-        datetime.datetime, Field(default_factory=datetime.datetime.now)
-    ]
+    path: Path
+
+class Byproduct(PartialByproduct, DBModel):
+    pass

@@ -1,5 +1,4 @@
 import os
-import json
 from storage import get_db
 from core_types import Task, PartialTask
 from strategies.strategy import Strategy

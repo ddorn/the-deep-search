@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from config import Config, get_config
 from core_types import (
     Chunk,
+    PartialByproduct,
     PartialChunk,
     Task,
     TaskStatus,
@@ -125,6 +126,19 @@ class Database:
 
         # TODO: Also delete the chunk embeddings for the document
 
+    # -- Byproducts --
+
+    def create_byproduct(self, byproduct: PartialByproduct, commit=True):
+        cur = self.cursor.execute(
+            "INSERT INTO byproducts (document_id, path) VALUES (?, ?)",
+            (byproduct.document_id, str(byproduct.path)),
+        )
+
+        if commit:
+            self.db.commit()
+
+        return cur.lastrowid
+
     # -- Chunks --
 
     def get_chunks(self, chunk_ids: list[int]) -> list[Chunk]:
@@ -237,7 +251,7 @@ class Database:
             urn TEXT,
             source_id TEXT,
             created_at TIMESTAMP NOT NULL DEFAULT (DATETIME('now', 'utc')),
-            UNIQUE(urn)
+            UNIQUE(urn, source_id)
         )"""
         )
 

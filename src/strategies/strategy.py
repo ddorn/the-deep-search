@@ -10,8 +10,10 @@ from typing import ClassVar
 from openai import BaseModel
 
 from constants import DIRS
-from core_types import Task
+from core_types import PartialByproduct, Task
+from storage import get_db
 
+NOT_GIVEN = object()
 
 class NoConfig(BaseModel):
     pass
@@ -35,6 +37,40 @@ class Module[ConfigType: BaseModel](abc.ABC):
         folder = DIRS.user_data_path / "modules" / self.data_folder_name()
         folder.mkdir(parents=True, exist_ok=True)
         return folder
+
+    def byproduct_path(self, kind: str, name: str) -> Path:
+        folder = self.data_folder / kind
+        folder.mkdir(parents=True, exist_ok=True)
+        return folder / name
+
+    # @contextmanager
+    # def open_byproduct(self, kind: str, name: str, mode: str, **kwargs):
+    #     byproduct_path = self.byproduct_path(kind, name)
+    #     with byproduct_path.open(mode, **kwargs) as f:
+    #         yield f
+
+    def write_byproduct(self, kind: str, name: str, document_id: int, content: str):
+        byproduct_path = self.byproduct_path(kind, name)
+
+        get_db().create_byproduct(
+            PartialByproduct(
+                document_id=document_id,
+                path=byproduct_path,
+            )
+        )
+
+        with byproduct_path.open("w") as f:
+            f.write(content)
+
+    def read_byproduct(self, kind: str, name: str, default=NOT_GIVEN):
+        byproduct_path = self.byproduct_path(kind, name)
+
+        try:
+            return byproduct_path.read_text()
+        except FileNotFoundError:
+            if default is NOT_GIVEN:
+                raise
+            return default
 
     @contextmanager
     def mount(self):

@@ -7,7 +7,8 @@ from typing import ClassVar
 from openai import BaseModel
 
 from constants import DIRS
-from core_types import Rule, Task
+from core_types import Asset, Rule, Task
+from storage import get_db
 
 NOT_GIVEN = object()
 
@@ -84,10 +85,15 @@ class Strategy[ConfigType: BaseModel](Module[ConfigType]):
     @abc.abstractmethod
     async def process_all(self, tasks: list[Task]) -> None:
         """
-        Processes a batch of tasks.
+        Processes a batch of assets.
 
-        It is guaranteed that all tasks in the batch are of the strategy's type,
-        and that there are at most MAX_BATCH_SIZE tasks in the batch.
+        It is assumed that:
+        - All tasks target this strategy
+        - The input asset matches the rules from `add_rules`, or is otherwise suitable for processing by this strategy.
+        - There are at most MAX_BATCH_SIZE tasks in the batch.
+
+        Those assumptions should not be strictly enforced, as it enable
+        other strategies/plugins to provide different but suitable inputs.
         """
         raise NotImplementedError()
 
@@ -99,7 +105,6 @@ class Strategy[ConfigType: BaseModel](Module[ConfigType]):
         This can also modify rules previously added by other strategies, but needs to be done carefully.
         """
         raise NotImplementedError()
-
 
 class Source[ConfigType: BaseModel](Module[ConfigType]):
 

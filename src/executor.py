@@ -2,12 +2,13 @@ import asyncio
 from collections import defaultdict
 from contextlib import ExitStack, contextmanager
 import random
+import re
 
 from config import Config
 from sources import BUILT_IN_SOURCES
 from strategies import BUILT_IN_STRATEGIES
 from strategies.strategy import Source, Strategy
-from core_types import Task, TaskStatus
+from core_types import PartialTask, Rule, Task, TaskStatus
 from storage import get_db
 from logs import logger
 
@@ -16,6 +17,7 @@ class Executor:
     def __init__(self) -> None:
         self.sources: dict[str, Source] = {}
         self.strategies: dict[str, Strategy] = {}
+        self.rules: list[Rule] = []
         self.db = get_db()
 
     def pick_tasks_to_run(self, tasks: list[Task]) -> list[Task]:
@@ -61,6 +63,7 @@ class Executor:
             raw_config = self.db.config.strategies.get(name, {})
             parsed_config = strategy_class.CONFIG_TYPE.model_validate(raw_config)
             self.strategies[name] = strategy_class(parsed_config)
+            self.rules = self.strategies[name].add_rules(self.rules)
 
         self.db.restart_crashed_tasks()
 
@@ -69,6 +72,7 @@ class Executor:
 
             # Run the main loop
             while True:
+                self.create_tasks_from_unhandled_assets()
                 tasks = self.db.get_pending_tasks()
                 logger.debug(f"Found {len(tasks)} tasks to run")
                 if not tasks:
@@ -105,6 +109,30 @@ class Executor:
         for source_name in set(old_config.sources) - set(new_config.sources):
             for doc in self.db.get_documents_from_source(source_name):
                 self.db.delete_document(doc.id)
+                # TODO: also delete their folder
 
         # Save the new config
         self.db.save_config(new_config)
+
+    _asset_types_warnings = set()
+
+    def create_tasks_from_unhandled_assets(self):
+        db = get_db()
+
+        for asset in db.get_unhandled_assets():
+            for rule in self.rules:
+                if re.match(rule.pattern, asset.type):
+                    task_id = db.create_task(PartialTask(
+                        strategy=rule.strategy,
+                        document_id=asset.document_id,
+                        input_asset_id=asset.id,
+                        status=TaskStatus.PENDING,
+                    ), commit=False)
+                    db.set_asset_next_step(asset.id, task_id)
+
+                    break
+            else:
+                if asset.type not in self._asset_types_warnings:
+                    # Log the warning only once
+                    self._asset_types_warnings.add(asset.type)
+                    logger.warning(f"Unhandled asset type: {asset.type}")

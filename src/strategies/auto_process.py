@@ -1,7 +1,7 @@
 import mimetypes
 import os
 from storage import get_db
-from core_types import AssetType, PartialAsset, Rule, Task, PartialTask
+from core_types import Asset, AssetType, PartialAsset, Rule, Task, PartialTask
 from strategies.strategy import Strategy
 from strategies import ChunkFromTextStrategy
 
@@ -23,30 +23,29 @@ class AutoProcessStrategy(Strategy):
         ]
 
     async def process_all(self, tasks: list[Task]) -> None:
-        for task in tasks:
-            assert task.strategy == self.NAME
-            self.process(task)
+        assets = get_db().get_assets([task.input_asset_id for task in tasks])
 
-    def process(self, task: Task):
+        for task, asset in zip(tasks, assets):
+            self.process(task, asset)
+
+    def process(self, task: Task, asset: Asset):
         db = get_db()
-        asset = db.get_asset(task.input_asset_id)
-        assert asset is not None
         path = asset.path
         assert path is not None
         mimetype, encoding = mimetypes.guess_type(path)
 
         if encoding is not None:
-            raise ValueError(f"Can't determine actions for task {task} with encoding={encoding}")
+            raise ValueError(f"Can't determine actions for asset {asset} with encoding={encoding}")
 
         if mimetype is None:
-            raise ValueError(f"Can't determine actions for task {task} with mimetype={mimetype}")
+            raise ValueError(f"Can't determine actions for asset {asset} with mimetype={mimetype}")
 
         if mimetype.startswith("text/"):
             db.create_asset(PartialAsset(
-                document_id=task.document_id,
+                document_id=asset.document_id,
                 created_by_task_id=task.id,
                 type=AssetType.TEXT_FILE,
                 path=path,
             ))
         else:
-            raise ValueError(f"Can't determine actions for task {task} with mimetype={mimetype}")
+            raise ValueError(f"Can't determine actions for asset {asset} with mimetype={mimetype}")

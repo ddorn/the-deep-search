@@ -17,30 +17,27 @@ class EmbedChunksStrategy(Strategy):
 
     def add_rules(self, rules):
         return rules + [
-            Rule(pattern=AssetType.CHUNK_ID, action=self.NAME),
+            Rule(pattern=AssetType.CHUNK_ID, strategy=self.NAME),
         ]
 
     async def process_all(self, tasks: list[Task]):
         db = get_db()
 
-        asset_ids = [task.input_asset_id for task in tasks]
-        assets = db.get_assets(asset_ids)
-        chunk_ids = [int(asset.content) for asset in assets]
-        chunks = db.get_chunks(chunk_ids)
+        assets = db.get_assets([task.input_asset_id for task in tasks])
+        chunks = db.get_chunks([int(asset.content) for asset in assets])
 
         texts = [chunk.content for chunk in chunks]
         embeddings = await self.embed_texts(texts)
 
-        for chunk_id, task in zip(chunk_ids, tasks, strict=True):
-            assert task.input_asset_id == str(chunk_id)
+        for chunk, task in zip(chunks, tasks, strict=True):
             db.create_asset(PartialAsset(
                 document_id=task.document_id,
                 created_by_task_id=task.id,
                 type=AssetType.EMBEDDING_ID,
-                content=str(chunk_id),
+                content=str(chunk.id),
             ))
 
-        db.update_embeddings(chunk_ids, embeddings)
+        db.update_embeddings([chunk.id for chunk in chunks], embeddings)
 
         return embeddings
 

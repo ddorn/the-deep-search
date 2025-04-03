@@ -9,6 +9,7 @@ import numpy as np
 from config import Config
 from core_types import (
     Asset,
+    AssetType,
     Chunk,
     PartialAsset,
     PartialChunk,
@@ -189,6 +190,21 @@ class Database:
         ).fetchall()
 
         return self._make_ordered_list_from_results(rows, asset_ids, Asset)
+
+    def get_unhandled_assets(self) -> list[Asset]:
+        rows = self.cursor.execute(
+            "SELECT * FROM assets WHERE next_step_id IS NULL AND type IS NOT ?",
+            (AssetType.EMBEDDING_ID,),
+        ).fetchall()
+        return [Asset(**row) for row in rows]
+
+    def set_asset_next_step(self, asset_id: int, next_step_id: int):
+        self.cursor.execute(
+            "UPDATE assets SET next_step_id = ? WHERE id = ?",
+            (next_step_id, asset_id),
+        )
+        self.db.commit()
+
     # -- Chunks --
 
     def get_chunks(self, chunk_ids: list[int]) -> list[Chunk]:
@@ -341,7 +357,7 @@ class Database:
             document_id INTEGER REFERENCES documents(id) ON DELETE CASCADE,
             strategy TEXT NOT NULL,
             status TEXT NOT NULL,
-            input_asset_id INTEGER REFERENCES assets(id) ON DELETE CASCADE,
+            input_asset_id INTEGER REFERENCES assets(id) ON DELETE CASCADE
         )"""
         )
 

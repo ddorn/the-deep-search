@@ -39,18 +39,28 @@ class Chunk(PartialChunk, DBModel):
     pass
 
 
-
 class PartialDocument(BaseModel):
-    urn: str
+    source_urn: str
     source_id: str
 
 class Document(PartialDocument, DBModel):
     pass
 
 
-class PartialByproduct(BaseModel):
-    document_id: int
-    path: Path
+class AssetType(StrEnum):
+    CHUNK_ID = "chunk_id"
+    EMBEDDING_ID = "embedding_id"
+    GENERIC_FILE = "generic_file"
 
-class Byproduct(PartialByproduct, DBModel):
+
+class PartialAsset(BaseModel):
+    document_id: int
+    created_by_task_id: int | None = None
+    next_step_id: int | None = None
+    type: str
+    content: str | None = None
+    path: Path | None = None
+
+
+class Asset(PartialAsset, DBModel):
     pass

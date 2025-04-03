@@ -9,7 +9,7 @@ import numpy as np
 from config import Config
 from core_types import (
     Chunk,
-    PartialByproduct,
+    PartialAsset,
     PartialChunk,
     Task,
     TaskStatus,
@@ -70,8 +70,8 @@ class Database:
 
     def create_document(self, doc: PartialDocument, commit=True):
         cur = self.cursor.execute(
-            "INSERT INTO documents (urn, source_id) VALUES (?, ?)",
-            (doc.urn, doc.source_id),
+            "INSERT INTO documents (source_urn, source_id) VALUES (?, ?)",
+            (doc.source_urn, doc.source_id),
         )
 
         if commit:
@@ -87,12 +87,15 @@ class Database:
 
         return Document(**row) if row else None
 
-    def get_document_id_from_urn(self, urn: str) -> int | None:
-        row = self.cursor.execute(
-            "SELECT id FROM documents where urn = ?",
-            (urn,),
-        ).fetchone()
-        return row["id"] if row else None
+    def get_ids_from_urns(self, source: str, urns: list[str]) -> dict[str, int]:
+        rows = self.cursor.execute(
+            "SELECT id, source_urn FROM documents WHERE source_id = ? AND source_urn IN (%s)"
+            % ",".join("?" * len(urns)),
+            [source] + urns,
+        ).fetchall()
+
+        out = {row["source_urn"]: row["id"] for row in rows}
+        return out
 
     def get_documents_from_source(self, source_id: str) -> list[Document]:
         rows = self.cursor.execute(
@@ -113,29 +116,23 @@ class Database:
 
         self.delete_embeddings(chunk_ids)
 
-        # 2. Delete all the byproducts (in the filesystem, then from the database)
-        byproducts = self.cursor.execute(
-            "SELECT path FROM byproducts WHERE document_id IN (%s)" % ",".join("?" * len(document_ids)),
+        # 2. Delete all the assets that are files
+        assets = self.cursor.execute(
+            "SELECT path FROM assets WHERE path IS NOT NULL AND document_id IN (%s)"
+            % ",".join("?" * len(document_ids)),
             document_ids,
         ).fetchall()
 
-        # Delete the files associated with the byproducts
-        for byproduct in byproducts:
-            path = Path(byproduct["path"])
+        # Delete the files associated with the assets
+        for asset in assets:
+            path = Path(asset["path"])
             if path and path.exists():
-                # Assert path is in the data directory
-                if DIRS.user_data_path not in path.resolve().parents:
-                    raise ValueError(f"Byproduct file '{path}' is not in the data directory.")
-                logger.debug(f"Deleting byproduct file: '{path}'")
-                path.unlink()
+                # Only if the file was produced by us: we DON'T want to delete user files.
+                if DIRS.user_data_path in path.resolve().parents:
+                    logger.debug(f"Deleting asset file: '{path}'")
+                    path.unlink()
 
-        # Delete the byproducts from the database
-        self.cursor.execute(
-            "DELETE FROM byproducts WHERE document_id IN (%s)" % ",".join("?" * len(document_ids)),
-            document_ids,
-        )
-
-        # 3. Delete the documents and all related data
+        # 3. Delete the documents, tasks, assets, and chunks
         self.cursor.execute(
             "DELETE FROM documents WHERE id IN (%s)" % ",".join("?" * len(document_ids)),
             document_ids,
@@ -143,12 +140,19 @@ class Database:
 
         self.db.commit()
 
-    # -- Byproducts --
+    # -- Assets --
 
-    def create_byproduct(self, byproduct: PartialByproduct, commit=True):
+    def create_asset(self, asset: PartialAsset, commit=True) -> int:
         cur = self.cursor.execute(
-            "INSERT INTO byproducts (document_id, path) VALUES (?, ?)",
-            (byproduct.document_id, str(byproduct.path)),
+            "INSERT INTO assets (document_id, created_by_task_id, next_step_id, type, content, path) VALUES (?, ?, ?, ?, ?, ?)",
+            (
+                asset.document_id,
+                asset.created_by_task_id,
+                asset.next_step_id,
+                asset.type,
+                asset.content,
+                str(asset.path),
+            ),
         )
 
         if commit:
@@ -303,10 +307,10 @@ class Database:
         self.cursor.execute(
             """CREATE TABLE IF NOT EXISTS documents (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            urn TEXT,
+            source_urn TEXT,
             source_id TEXT,
             created_at TIMESTAMP NOT NULL DEFAULT (DATETIME('now', 'utc')),
-            UNIQUE(urn, source_id)
+            UNIQUE(source_urn, source_id)
         )"""
         )
 
@@ -323,12 +327,16 @@ class Database:
         )
 
         self.cursor.execute(
-            """CREATE TABLE IF NOT EXISTS byproducts (
+            """CREATE TABLE IF NOT EXISTS assets (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            document_id TEXT REFERENCES documents(id) ON DELETE CASCADE,
-            path TEXT,
             created_at TIMESTAMP NOT NULL DEFAULT (DATETIME('now', 'utc')),
-            UNIQUE(document_id, path)
+            document_id TEXT REFERENCES documents(id) ON DELETE CASCADE,
+            created_by_task_id INTEGER REFERENCES tasks(id) ON DELETE CASCADE,
+            next_step_id INTEGER REFERENCES tasks(id) ON DELETE SET NULL,
+
+            type TEXT NOT NULL,
+            content TEXT,
+            path TEXT
         )"""
         )
 

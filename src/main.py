@@ -1,8 +1,7 @@
 import asyncio
 
 from constants import DIRS
-from sources.directory_source import DirectorySource
-from config import Config, SourceConfig, load_config
+from config import Config, load_config
 from pathlib import Path
 import shutil
 
@@ -10,13 +9,16 @@ from typer import Typer
 
 from logs import logger
 from executor import Executor
-from storage import Database, get_db, set_db
+from storage import Database, set_db
 
 app = Typer(no_args_is_help=True, add_completion=False)
 
 
 @app.command()
-def main(config: Path = None):
+def main(config: Path = None, fresh: bool = False):
+    if fresh:
+        delete_all_data()
+
     if config is None:
         parsed_config = Config(sources={})
     else:

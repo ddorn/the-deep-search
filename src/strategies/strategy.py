@@ -1,8 +1,5 @@
 from contextlib import contextmanager
 from functools import cached_property
-from importlib import import_module
-import importlib
-import importlib.util
 from pathlib import Path
 import abc
 from typing import ClassVar
@@ -10,8 +7,7 @@ from typing import ClassVar
 from openai import BaseModel
 
 from constants import DIRS
-from core_types import PartialByproduct, Task
-from storage import get_db
+from core_types import Task
 
 NOT_GIVEN = object()
 
@@ -21,7 +17,7 @@ class NoConfig(BaseModel):
 
 class Module[ConfigType: BaseModel](abc.ABC):
     NAME: ClassVar[str]
-    CONFIG_TYPE: type[ConfigType] = NoConfig  # noqa: ignore[assignment]
+    CONFIG_TYPE: type[ConfigType] = NoConfig
 
     def __init__(self, config: ConfigType):
         self.config = config
@@ -38,39 +34,10 @@ class Module[ConfigType: BaseModel](abc.ABC):
         folder.mkdir(parents=True, exist_ok=True)
         return folder
 
-    def byproduct_path(self, kind: str, name: str) -> Path:
+    def path_for_asset(self, kind: str, name: str) -> Path:
         folder = self.data_folder / kind
         folder.mkdir(parents=True, exist_ok=True)
         return folder / name
-
-    # @contextmanager
-    # def open_byproduct(self, kind: str, name: str, mode: str, **kwargs):
-    #     byproduct_path = self.byproduct_path(kind, name)
-    #     with byproduct_path.open(mode, **kwargs) as f:
-    #         yield f
-
-    def write_byproduct(self, kind: str, name: str, document_id: int, content: str):
-        byproduct_path = self.byproduct_path(kind, name)
-
-        get_db().create_byproduct(
-            PartialByproduct(
-                document_id=document_id,
-                path=byproduct_path,
-            )
-        )
-
-        with byproduct_path.open("w") as f:
-            f.write(content)
-
-    def read_byproduct(self, kind: str, name: str, default=NOT_GIVEN):
-        byproduct_path = self.byproduct_path(kind, name)
-
-        try:
-            return byproduct_path.read_text()
-        except FileNotFoundError:
-            if default is NOT_GIVEN:
-                raise
-            return default
 
     @contextmanager
     def mount(self):

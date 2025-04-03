@@ -140,6 +140,13 @@ class Database:
             "DELETE FROM documents WHERE id IN (%s)" % ",".join("?" * len(document_ids)),
             document_ids,
         )
+        # FIXME: This should not be necessary, as the ON DELETE CASCADE should take care of it.
+        # But it doesn't and I don't know why. It does work for assets and chunks though.
+        self.cursor.execute(
+            "DELETE FROM tasks WHERE document_id IN (%s)" % ",".join("?" * len(document_ids)),
+            document_ids,
+        )
+
         self.db.commit()
 
     # -- Assets --
@@ -454,9 +461,10 @@ class Database:
             document_id INTEGER,
             strategy TEXT NOT NULL,
             status TEXT NOT NULL,
-            input_asset_id INTEGER REFERENCES assets(id),
+            input_asset_id INTEGER,
 
-            FOREIGN KEY(document_id) REFERENCES documents(id) ON DELETE CASCADE
+            FOREIGN KEY(document_id) REFERENCES documents(id) ON DELETE CASCADE,
+            FOREIGN KEY(input_asset_id) REFERENCES assets(id) ON DELETE CASCADE
         )"""
         )
 
@@ -465,7 +473,7 @@ class Database:
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             created_at TIMESTAMP NOT NULL DEFAULT (DATETIME('now', 'utc')),
 
-            document_id TEXT,
+            document_id INTEGER,
             created_by_task_id INTEGER,
             next_step_id INTEGER,
 
@@ -482,7 +490,7 @@ class Database:
         self.cursor.execute(
             """CREATE TABLE IF NOT EXISTS chunks (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            document_id TEXT,
+            document_id INTEGER,
             document_order INTEGER,
             content TEXT,
             created_at TIMESTAMP NOT NULL DEFAULT (DATETIME('now', 'utc')),

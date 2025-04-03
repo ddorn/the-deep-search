@@ -50,6 +50,13 @@ def rerun_strategy(strategy: str, config: Path = None):
     db.rerun_strategy(strategy)
 
 
+@app.command()
+def test(doc_id: int):
+    db = Database(DIRS.user_data_path / "db.sqlite", config=Config(sources={}))
+
+    db.delete_documents([doc_id])
+
+
 
 @app.command()
 def delete_all_data():

@@ -15,6 +15,7 @@ dependencies = [
     "pydantic>=2.10.6",
     "pymilvus>=2.5.4",
     "pyyaml>=6.0.2",
+    "streamlit>=1.44.1",
     "tqdm>=4.67.1",
     "typer>=0.15.1",
     "uvicorn>=0.34.0",

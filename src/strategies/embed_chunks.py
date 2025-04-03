@@ -1,3 +1,4 @@
+import asyncio
 import openai
 from core_types import Task
 from strategies.strategy import Strategy
@@ -22,6 +23,13 @@ class EmbedChunksStrategy(Strategy):
         chunks = db.get_chunks(chunk_ids)
         texts = [chunk.content for chunk in chunks]
 
+        embeddings = await self.embed_texts(texts)
+
+        db.update_embeddings(chunk_ids, embeddings)
+        return embeddings
+
+    async def embed_texts(self, texts: list[str]) -> np.ndarray:
+        db = get_db()
         response = await self.openai.embeddings.create(
             dimensions=db.config.global_config.embedding_dimension,
             model="text-embedding-3-small",
@@ -31,7 +39,5 @@ class EmbedChunksStrategy(Strategy):
         embeddings = np.zeros((len(texts), db.config.global_config.embedding_dimension), dtype=np.float32)
         for embedding in response.data:
             embeddings[embedding.index] = embedding.embedding
-
-        db.update_embeddings(chunk_ids, embeddings)
 
         return embeddings

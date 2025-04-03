@@ -21,17 +21,13 @@ class Executor:
     def pick_tasks_to_run(self, tasks: list[Task]) -> list[Task]:
         assert tasks
 
-        return [random.choice(tasks)]
-
         tasks_by_strategy = defaultdict(list)
         for task in tasks:
             tasks_by_strategy[task.strategy].append(task)
 
-        # Pick the highest priority strategy, if tied, pick the oldest
-        def score(strategy: str):
-            return (-self.strategies[strategy].PRIORITY, min(task.created_at for task in tasks_by_strategy[strategy]))
-
-        raise NotImplementedError("Not implemented yet")
+        # Pick the highest priority strategy
+        strategy = max(tasks_by_strategy.keys(), key=lambda s: self.strategies[s].PRIORITY)
+        return tasks_by_strategy[strategy]
 
     async def run_tasks(self, tasks: list[Task]) -> None:
         if not tasks:

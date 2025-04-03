@@ -207,8 +207,12 @@ class Database:
             embeddings = np.load(DIRS.user_data_path / "embeddings.npy")
             chunk_to_idx = json.loads((DIRS.user_data_path / "embeddings.json").read_text())
         except FileNotFoundError:
+            logger.info("Embeddings files not found, creating empty embeddings.")
             embeddings = np.zeros((0, self.config.global_config.embedding_dimension), dtype=np.float32)
             chunk_to_idx = {}
+
+        # Saving ints as keys converts them to strings apparently -- we hide this.
+        chunk_to_idx = {int(k): v for k, v in chunk_to_idx.items()}
 
         assert embeddings.shape[0] == len(chunk_to_idx), "Embeddings and chunk_to_idx length mismatch"
         return embeddings, chunk_to_idx
@@ -221,6 +225,13 @@ class Database:
     def update_embeddings(self, chunk_ids: list[int], embeddings: np.ndarray):
         current_embeddings, chunk_to_idx = self.load_embeddings()
 
+        # Make space for new chunks
+        new_chunks = [chunk_id for chunk_id in chunk_ids if chunk_id not in chunk_to_idx]
+        new_space = np.empty((len(new_chunks), self.config.global_config.embedding_dimension), dtype=np.float32)
+        current_embeddings = np.concatenate((current_embeddings, new_space), axis=0)
+        chunk_to_idx.update({chunk_id: i for i, chunk_id in enumerate(chunk_ids, start=len(chunk_to_idx))})
+
+        # Update existing ones
         embedding_indices = [chunk_to_idx[chunk_id] for chunk_id in chunk_ids if chunk_id in chunk_to_idx]
         current_embeddings[embedding_indices] = embeddings
 

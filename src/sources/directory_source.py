@@ -55,9 +55,10 @@ class DirectorySource(Source[DirectorySourceConfig]):
 
         # Direclty delete document from the db (deleted & changed ones)
         ids_to_delete = db.get_ids_from_urns(self.NAME, to_delete)
-        db.delete_documents(list(ids_to_delete.values()))
-        for urn in to_delete:
-            self.delete_hash(urn)
+        if ids_to_delete:
+            db.delete_documents(list(ids_to_delete.values()))
+            for urn in to_delete:
+                self.delete_hash(urn)
 
         # (Re)create documents
         for urn, hashed_document in to_create.items():
@@ -72,6 +73,7 @@ class DirectorySource(Source[DirectorySourceConfig]):
         db.create_asset(
             PartialAsset(
                 document_id=document_id,
+                created_by_task_id=None,
                 type=AssetType.GENERIC_FILE,
                 path=self.full_path_from_urn(urn),
             )

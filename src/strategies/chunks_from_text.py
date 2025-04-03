@@ -51,7 +51,7 @@ class ChunkFromTextStrategy(Strategy[ChunkFromTextConfig]):
 
         assets = db.get_assets([task.input_asset_id for task in tasks])
 
-        for asset in assets:
+        for task, asset in zip(tasks, assets):
             assert asset.path is not None
             path = Path(asset.path)
             text = path.read_text()
@@ -69,6 +69,7 @@ class ChunkFromTextStrategy(Strategy[ChunkFromTextConfig]):
             for chunk_id in ids:
                 db.create_asset(PartialAsset(
                     document_id=asset.document_id,
+                    created_by_task_id=task.id,
                     type=AssetType.CHUNK_ID,
                     content=str(chunk_id),
                 ))

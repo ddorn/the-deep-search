@@ -22,7 +22,7 @@ def setup_logging() -> logging.Logger:
         show_time=True,
         enable_link_path=True,
         rich_tracebacks=True,
-        omit_repeated_times=False,
+        # omit_repeated_times=False,
     )
 
     # Add handlers to the logger

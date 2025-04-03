@@ -1,3 +1,4 @@
+from collections import Counter
 from contextlib import contextmanager
 import json
 from pathlib import Path
@@ -128,39 +129,17 @@ class Database:
         return [Document(**row) for row in rows]
 
     def delete_documents(self, document_ids: list[int]):
-        # We want to be slightly careful here, to live a correct state if the task fails in the middle.
+        logger.debug(f"Deleting documents with ids: {document_ids}")
 
-        # 1. Delete all related embeddings
-        chunks = self.cursor.execute(
-            "SELECT id FROM chunks WHERE document_id IN (%s)" % ",".join("?" * len(document_ids)),
+        self._delete_assets_and_what_they_point_to(
+            "document_id IN (%s)" % ",".join("?" * len(document_ids)),
             document_ids,
-        ).fetchall()
-        chunk_ids = [chunk["id"] for chunk in chunks]
+        )
 
-        self.delete_embeddings(chunk_ids)
-
-        # 2. Delete all the assets that are files
-        assets = self.cursor.execute(
-            "SELECT path FROM assets WHERE path IS NOT NULL AND document_id IN (%s)"
-            % ",".join("?" * len(document_ids)),
-            document_ids,
-        ).fetchall()
-
-        # Delete the files associated with the assets
-        for asset in assets:
-            path = Path(asset["path"])
-            if path and path.exists():
-                # Only if the file was produced by us: we DON'T want to delete user files.
-                if DIRS.user_data_path in path.resolve().parents:
-                    logger.debug(f"Deleting asset file: '{path}'")
-                    path.unlink()
-
-        # 3. Delete the documents, tasks, assets, and chunks
         self.cursor.execute(
             "DELETE FROM documents WHERE id IN (%s)" % ",".join("?" * len(document_ids)),
             document_ids,
         )
-
         self.db.commit()
 
     # -- Assets --
@@ -202,6 +181,59 @@ class Database:
         self.cursor.execute(
             "UPDATE assets SET next_step_id = ? WHERE id = ?",
             (next_step_id, asset_id),
+        )
+        self.db.commit()
+
+    def _delete_assets_and_what_they_point_to(self, where: str, args: list):
+        """
+        Delete assets from the database and the files/embeddings/chunks they point to.
+
+        Note that this does not do anything about the tasks that point to those assets
+        as inputs. This always needs to be taken care of by the caller.
+        """
+        # We want to be slightly careful here, to live an OK state if the task fails in the middle.
+
+        # 1. Start with the embedding assets
+        embedding_assets = self.cursor.execute(
+            f"SELECT content FROM assets WHERE type = ? AND {where}",
+            [AssetType.EMBEDDING_ID] + args,
+        ).fetchall()
+
+        if embedding_assets:
+            embedding_ids = [int(asset["content"]) for asset in embedding_assets]
+            self.delete_embeddings(embedding_ids)
+
+        # 2. Delete all the assets that are files
+        file_assets = self.cursor.execute(
+            f"SELECT path FROM assets WHERE path IS NOT NULL AND {where}",
+            args,
+        ).fetchall()
+
+        # Delete the files associated with the assets
+        for asset in file_assets:
+            path = Path(asset["path"])
+            if path and path.exists():
+                # Only if the file was produced by us: we DON'T want to delete user files.
+                if DIRS.user_data_path in path.resolve().parents:
+                    logger.debug(f"Deleting asset file: '{path}'")
+                    path.unlink()
+
+        # 3. Delete the assets that are chunks
+        chunks = self.cursor.execute(
+            f"SELECT content FROM assets WHERE type = ? AND {where}",
+            [AssetType.CHUNK_ID] + args,
+        ).fetchall()
+        if chunks:
+            chunk_ids = [int(asset["content"]) for asset in chunks]
+            self.cursor.execute(
+                "DELETE FROM chunks WHERE id IN (%s)" % ",".join("?" * len(chunk_ids)),
+                chunk_ids,
+            )
+
+        # 4. Delete the assets in the db
+        self.cursor.execute(
+            f"DELETE FROM assets WHERE {where}",
+            args,
         )
         self.db.commit()
 
@@ -279,11 +311,76 @@ class Database:
     def delete_embeddings(self, chunk_ids: list[int]):
         embeddings, chunk_to_idx = self.load_embeddings()
 
-        # Remove the embeddings for the chunks (with .pop())
-        embedding_indices = [chunk_to_idx.pop(chunk_id) for chunk_id in chunk_ids if chunk_id in chunk_to_idx]
-        embeddings = np.delete(embeddings, embedding_indices, axis=0)
+        # Collect the remaining chunks
+        to_delete = set(chunk_ids)
+        remaining_chunks = [chunk_id for chunk_id in chunk_to_idx if chunk_id not in to_delete]
+        corresponding_rows = [chunk_to_idx[chunk_id] for chunk_id in remaining_chunks]
+
+        embeddings = embeddings[corresponding_rows]
+        chunk_to_idx = {chunk_id: i for i, chunk_id in enumerate(remaining_chunks)}
 
         self.overwrite_embeddings_files(embeddings, chunk_to_idx)
+
+    # -- Strategies --
+
+    def rerun_strategy(self, strategy: str):
+        # We need to:
+        # - reset to PENDING all tasks from this strategy
+        # - Delete all tasks that come after
+        # - Delete all assets made by this strategy and further tasks
+        tasks_to_rerun = self.cursor.execute(
+            "SELECT id, strategy FROM tasks WHERE strategy = ?",
+            (strategy,)
+        ).fetchall()
+
+        assets_created = []
+        tasks_to_delete = []
+        last_tasks = tasks_to_rerun
+        while last_tasks:
+            new_assets = self.cursor.execute(
+                "SELECT * FROM assets WHERE created_by_task_id IN (%s)"
+                % ",".join("?" * len(last_tasks)),
+                [task["id"] for task in last_tasks],
+            ).fetchall()
+            assets_created.extend(new_assets)
+
+            last_tasks = self.cursor.execute(
+                "SELECT id, strategy FROM tasks WHERE input_asset_id IN (%s)"
+                % ",".join("?" * len(new_assets)),
+                [asset["id"] for asset in new_assets],
+            ).fetchall()
+            tasks_to_delete.extend(last_tasks)
+
+        # Print a nice summary: nb of task per strategy, nb of assets per type, nb of tasks reset
+        tasks_counter = Counter(task["strategy"] for task in tasks_to_delete)
+        assets_counter = Counter(asset["type"] for asset in assets_created)
+        logger.info(f"Rerunning strategy '{strategy}'")
+        logger.info(f"  - {len(tasks_to_rerun)} tasks to reset")
+        for strat, count in tasks_counter.items():
+            logger.info(f"  - {count} tasks to delete from strategy '{strat}'")
+        for asset_type, count in assets_counter.items():
+            logger.info(f"  - {count} assets of type '{asset_type}' created")
+
+        if input("Are you sure you want to continue? (y/n)") != "y":
+            logger.info("Aborting...")
+            return
+
+        # We delete assets that were created by any of the tasks
+        self._delete_assets_and_what_they_point_to(
+            "id IN (%s)" % ",".join("?" * len(assets_created)),
+            [asset["id"] for asset in assets_created],
+        )
+        self.cursor.execute(
+            "DELETE FROM tasks WHERE id IN (%s)"
+            % ",".join("?" * len(tasks_to_delete)),
+            [task["id"] for task in tasks_to_delete],
+        )
+        self.db.commit()
+        self.cursor.execute(
+            "UPDATE tasks SET status = ? WHERE strategy = ?",
+            [TaskStatus.PENDING, strategy]
+        )
+        self.db.commit()
 
     # -- Config --
 
@@ -354,10 +451,12 @@ class Database:
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             created_at TIMESTAMP NOT NULL DEFAULT (DATETIME('now', 'utc')),
 
-            document_id INTEGER REFERENCES documents(id) ON DELETE CASCADE,
+            document_id INTEGER,
             strategy TEXT NOT NULL,
             status TEXT NOT NULL,
-            input_asset_id INTEGER REFERENCES assets(id) ON DELETE CASCADE
+            input_asset_id INTEGER REFERENCES assets(id),
+
+            FOREIGN KEY(document_id) REFERENCES documents(id) ON DELETE CASCADE
         )"""
         )
 
@@ -366,24 +465,30 @@ class Database:
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             created_at TIMESTAMP NOT NULL DEFAULT (DATETIME('now', 'utc')),
 
-            document_id TEXT REFERENCES documents(id) ON DELETE CASCADE,
-            created_by_task_id INTEGER REFERENCES tasks(id) ON DELETE CASCADE,
-            next_step_id INTEGER REFERENCES tasks(id) ON DELETE SET NULL,
+            document_id TEXT,
+            created_by_task_id INTEGER,
+            next_step_id INTEGER,
 
             type TEXT NOT NULL,
             content TEXT,
-            path TEXT
+            path TEXT,
+
+            FOREIGN KEY(document_id) REFERENCES documents(id) ON DELETE CASCADE,
+            FOREIGN KEY(created_by_task_id) REFERENCES tasks(id) ON DELETE CASCADE,
+            FOREIGN KEY(next_step_id) REFERENCES tasks(id) ON DELETE SET NULL
         )"""
         )
 
         self.cursor.execute(
             """CREATE TABLE IF NOT EXISTS chunks (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            document_id TEXT REFERENCES documents(id) ON DELETE CASCADE,
+            document_id TEXT,
             document_order INTEGER,
             content TEXT,
             created_at TIMESTAMP NOT NULL DEFAULT (DATETIME('now', 'utc')),
-            UNIQUE(document_id, document_order)
+            UNIQUE(document_id, document_order),
+
+            FOREIGN KEY(document_id) REFERENCES documents(id) ON DELETE CASCADE
         )"""
         )
 

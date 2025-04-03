@@ -32,6 +32,26 @@ def main(config: Path = None, fresh: bool = False):
 
 
 @app.command()
+def rerun_strategy(strategy: str, config: Path = None):
+    """Rerun the specified strategy."""
+    if config is None:
+        parsed_config = Config(sources={})
+    else:
+        parsed_config = load_config(config)
+
+    db = Database(DIRS.user_data_path / "db.sqlite", config=parsed_config)
+
+    strategies = set(task["strategy"] for task in db.cursor.execute("SELECT DISTINCT strategy FROM tasks").fetchall())
+    if strategy not in strategies:
+        logger.info(f"Available strategies: {strategies}")
+        logger.error(f"Strategy '{strategy}' not found in the database.")
+        return
+
+    db.rerun_strategy(strategy)
+
+
+
+@app.command()
 def delete_all_data():
     shutil.rmtree(DIRS.user_data_path)
     shutil.rmtree(DIRS.user_cache_path)

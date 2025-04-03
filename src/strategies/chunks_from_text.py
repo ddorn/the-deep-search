@@ -2,7 +2,7 @@ from pathlib import Path
 
 import openai
 from pydantic import BaseModel
-from core_types import PartialChunk, PartialTask, Task, TaskStatus
+from core_types import AssetType, PartialAsset, PartialChunk, PartialTask, Rule, Task, TaskStatus
 from strategies.strategy import Strategy
 from strategies.embed_chunks import EmbedChunksStrategy
 from storage import get_db
@@ -41,17 +41,25 @@ class ChunkFromTextStrategy(Strategy[ChunkFromTextConfig]):
         super().__init__(config)
         self.openai = openai.AsyncClient()
 
+    def add_rules(self, rules):
+        return rules + [
+            Rule(pattern=AssetType.TEXT_FILE, strategy=self.NAME),
+        ]
+
     async def process_all(self, tasks: list[Task]) -> None:
         db = get_db()
 
-        for task in tasks:
-            path = Path(task.args)
+        assets = db.get_assets([task.input_asset_id for task in tasks])
+
+        for asset in assets:
+            assert asset.path is not None
+            path = Path(asset.path)
             text = path.read_text()
             chunks = await self.chunk_text(text)
 
             ids = db.create_chunks([
                 PartialChunk(
-                    document_id=task.document_id,
+                    document_id=asset.document_id,
                     document_order=i,
                     content=chunk,
                 )
@@ -59,12 +67,10 @@ class ChunkFromTextStrategy(Strategy[ChunkFromTextConfig]):
             ])
 
             for chunk_id in ids:
-                db.create_task(PartialTask(
-                    strategy=EmbedChunksStrategy.NAME,
-                    document_id=task.document_id,
-                    args=str(chunk_id),
-                    status=TaskStatus.PENDING,
-                    parent_id=task.id,
+                db.create_asset(PartialAsset(
+                    document_id=asset.document_id,
+                    type=AssetType.CHUNK_ID,
+                    content=str(chunk_id),
                 ))
 
     async def chunk_text(self, text: str) -> list[str]:

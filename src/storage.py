@@ -8,6 +8,7 @@ import numpy as np
 
 from config import Config
 from core_types import (
+    Asset,
     Chunk,
     PartialAsset,
     PartialChunk,
@@ -32,12 +33,33 @@ class Database:
         self.cursor = self.db.cursor()
         self.migrate()
 
+    def _make_ordered_list_from_results[T](
+        self,
+        results: list[dict],
+        ids: list[int],
+        type_: type[T],
+    ) -> list[T]:
+        if len(results) != len(ids):
+            missing_ids = set(ids) - {row["id"] for row in results}
+            raise ValueError(
+                f"Missing {type_.__name__} for ids: {missing_ids}"
+            )
+
+        object_dict = {row["id"]: type_(**row) for row in results}
+        return [object_dict[object_id] for object_id in ids]
+
+
     # -- Tasks --
 
     def create_task(self, task: PartialTask, commit=True):
         cur = self.cursor.execute(
-            "INSERT INTO tasks (strategy, document_id, status, parent_id, args) VALUES (?, ?, ?, ?, ?)",
-            (task.strategy, task.document_id, task.status, task.parent_id, task.args),
+            "INSERT INTO tasks (strategy, document_id, input_asset_id, status) VALUES (?, ?, ?, ?)",
+            (
+                task.strategy,
+                task.document_id,
+                task.input_asset_id,
+                task.status,
+            ),
         )
 
         if commit:
@@ -160,6 +182,13 @@ class Database:
 
         return cur.lastrowid
 
+    def get_assets(self, asset_ids: list[int]) -> list[Asset]:
+        rows = self.cursor.execute(
+            "SELECT * FROM assets WHERE id IN (%s)" % ",".join("?" * len(asset_ids)),
+            asset_ids,
+        ).fetchall()
+
+        return self._make_ordered_list_from_results(rows, asset_ids, Asset)
     # -- Chunks --
 
     def get_chunks(self, chunk_ids: list[int]) -> list[Chunk]:
@@ -168,17 +197,7 @@ class Database:
             chunk_ids,
         ).fetchall()
 
-        if len(chunks) != len(chunk_ids):
-            missing_ids = set(chunk_ids) - {chunk["id"] for chunk in chunks}
-            raise ValueError(
-                f"Missing chunks for ids: {missing_ids}"
-            )
-
-        # Convert the rows to Chunk objects
-        chunk_dict = {chunk["id"]: Chunk(**chunk) for chunk in chunks}
-
-        # We return the chunks in the order they were requested
-        return [chunk_dict[chunk_id] for chunk_id in chunk_ids]
+        return self._make_ordered_list_from_results(chunks, chunk_ids, Chunk)
 
     def create_chunks(self, chunks: list[PartialChunk], commit=True) -> list[int]:
         new_ids = []
@@ -317,12 +336,12 @@ class Database:
         self.cursor.execute(
             """CREATE TABLE IF NOT EXISTS tasks (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            document_id INTEGER REFERENCES documents(id) ON DELETE CASCADE,
-            strategy TEXT,
-            status TEXT NOT NULL,
-            args BLOB,
             created_at TIMESTAMP NOT NULL DEFAULT (DATETIME('now', 'utc')),
-            parent_id INTEGER REFERENCES tasks(id)
+
+            document_id INTEGER REFERENCES documents(id) ON DELETE CASCADE,
+            strategy TEXT NOT NULL,
+            status TEXT NOT NULL,
+            input_asset_id INTEGER REFERENCES assets(id) ON DELETE CASCADE,
         )"""
         )
 
@@ -330,6 +349,7 @@ class Database:
             """CREATE TABLE IF NOT EXISTS assets (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             created_at TIMESTAMP NOT NULL DEFAULT (DATETIME('now', 'utc')),
+
             document_id TEXT REFERENCES documents(id) ON DELETE CASCADE,
             created_by_task_id INTEGER REFERENCES tasks(id) ON DELETE CASCADE,
             next_step_id INTEGER REFERENCES tasks(id) ON DELETE SET NULL,

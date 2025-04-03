@@ -50,7 +50,7 @@ class DirectorySource(Source[DirectorySourceConfig]):
 
         # Remove documents that are not in the source folder
         for urn in past_documents_urn:
-            logger.info(f"Deleted document: {urn}")
+            logger.info(f"Deleted document: {self.path_from_urn(urn)}")
             to_delete.append(urn)
 
         # Direclty delete document from the db (deleted & changed ones)

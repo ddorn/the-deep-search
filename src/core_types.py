@@ -22,9 +22,8 @@ class DBModel(BaseModel):
 class PartialTask(BaseModel):
     strategy: str
     document_id: int
-    args: str = ""
+    input_asset_id: int
     status: TaskStatus = TaskStatus.PENDING
-    parent_id: int | None = None
 
 
 class Task(PartialTask, DBModel):
@@ -51,6 +50,7 @@ class AssetType(StrEnum):
     CHUNK_ID = "chunk_id"
     EMBEDDING_ID = "embedding_id"
     GENERIC_FILE = "generic_file"
+    TEXT_FILE = "text_file"
 
 
 class PartialAsset(BaseModel):
@@ -64,3 +64,8 @@ class PartialAsset(BaseModel):
 
 class Asset(PartialAsset, DBModel):
     pass
+
+
+class Rule(BaseModel):
+    pattern: str
+    strategy: str

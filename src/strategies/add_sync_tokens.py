@@ -32,11 +32,34 @@ class AddSyncTokenStrategy(Strategy):
 
 
     def add_sync_tokens(self, text: str) -> str:
-        # We want to add tokens quite regularly, probably every ~100 characters
-        chunk_size = 100
-        text_parts = []
-        for idx, start in enumerate(range(0, len(text), chunk_size)):
-            text_parts.append(SYNC_FORMAT.format(id=idx))
-            text_parts.append(text[start:start + chunk_size])
+        # We want to add tokens quite regularly, probably every 100 characters
+        # but it would be nice to have them in nice places:
+        # - end of a line
+        # - end of a word
+        # So we try to put it after ±10% of the chunk size, trying first to find
+        # an end of a line there, or if not possible, an end of a word
 
-        return ''.join(text_parts)
+        chunk_size = 100
+        wiggle_room = chunk_size // 5
+        text_pieces = []
+        start = 0
+        while start < len(text):
+            candidate_end = start + chunk_size + wiggle_room
+            candidate = text[start:candidate_end]
+
+            # try to find a line break
+            if (line_break := candidate.rfind("\n")) > chunk_size - wiggle_room:
+                new_chunk = candidate[:line_break]
+            # try to find a space
+            elif (space := candidate.rfind(" ")) > chunk_size - wiggle_room:
+                new_chunk = candidate[:space]
+            # Just cut it at the chunk size
+            else:
+                new_chunk = candidate[:chunk_size]
+
+            text_pieces.append(new_chunk)
+            start += len(new_chunk)
+            # Add a sync token. // 2 because we are adding two tokens per chunk
+            text_pieces.append(SYNC_FORMAT.format(id=len(text_pieces) // 2))
+
+        return "".join(text_pieces)

@@ -15,7 +15,7 @@ class ResponseModel(BaseModel):
 
 class ChunkFromTextConfig(BaseModel):
     # model: str = "gpt-4o-mini"
-    chars_per_chunk: int = 400
+    chars_per_chunk: int = 500
 
 
 class ChunkFromTextStrategy(Strategy[ChunkFromTextConfig]):

@@ -94,8 +94,8 @@ class Database:
 
     def create_document(self, doc: PartialDocument, commit=True):
         cur = self.cursor.execute(
-            "INSERT INTO documents (source_urn, source_id) VALUES (?, ?)",
-            (doc.source_urn, doc.source_id),
+            "INSERT INTO documents (source_urn, source_id, title) VALUES (?, ?, ?)",
+            (doc.source_urn, doc.source_id, doc.title),
         )
 
         if commit:
@@ -461,6 +461,7 @@ class Database:
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             source_urn TEXT,
             source_id TEXT,
+            title TEXT,
             created_at TIMESTAMP NOT NULL DEFAULT (DATETIME('now', 'utc')),
             UNIQUE(source_urn, source_id)
         )"""

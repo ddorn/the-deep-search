@@ -40,6 +40,7 @@ class Chunk(PartialChunk, DBModel):
 class PartialDocument(BaseModel):
     source_urn: str
     source_id: str
+    title: str
 
 class Document(PartialDocument, DBModel):
     pass

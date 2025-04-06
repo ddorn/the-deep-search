@@ -67,8 +67,10 @@ class DirectorySource(Source[DirectorySourceConfig]):
     def on_new_document(self, urn: str, hashed_document: str):
         db = get_db()
 
+        path = self.path_from_urn(urn)
+
         document_id = db.create_document(
-            PartialDocument(source_urn=urn, source_id=self.NAME), commit=False
+            PartialDocument(source_urn=urn, source_id=self.title, title=str(path)), commit=False
         )
         db.create_asset(
             PartialAsset(

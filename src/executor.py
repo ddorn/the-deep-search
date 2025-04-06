@@ -29,7 +29,9 @@ class Executor:
 
         # Pick the highest priority strategy
         strategy = max(tasks_by_strategy.keys(), key=lambda s: self.strategies[s].PRIORITY)
-        return tasks_by_strategy[strategy]
+        tasks_for_best_strategy = tasks_by_strategy[strategy]
+        batch_to_run = tasks_for_best_strategy[:self.strategies[strategy].MAX_BATCH_SIZE]
+        return batch_to_run
 
     async def run_tasks(self, tasks: list[Task]) -> None:
         if not tasks:

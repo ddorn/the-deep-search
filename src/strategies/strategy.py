@@ -73,12 +73,12 @@ class Strategy[ConfigType: BaseModel](Module[ConfigType]):
     NAME: ClassVar[str]
     PRIORITY: ClassVar[int]
     MAX_BATCH_SIZE: ClassVar[int]
-    RESOURCES: ClassVar[list[str]]
+    INPUT_ASSET_TYPE: ClassVar[str]
 
     def __init__(self, config: ConfigType):
         super().__init__(config)
 
-        for attribute in ["NAME", "PRIORITY", "MAX_BATCH_SIZE", "RESOURCES"]:
+        for attribute in ["NAME", "PRIORITY", "MAX_BATCH_SIZE"]:
             if not hasattr(self, attribute):
                 raise ValueError(f"Strategy {self.__class__.__name__} must have a {attribute} attribute")
 
@@ -97,14 +97,15 @@ class Strategy[ConfigType: BaseModel](Module[ConfigType]):
         """
         raise NotImplementedError()
 
-    @abc.abstractmethod
     def add_rules(self, rules: list[Rule]) -> list[Rule]:
         """
         Modifies the rules list to tell the executor what this tasks need to process.
 
         This can also modify rules previously added by other strategies, but needs to be done carefully.
         """
-        raise NotImplementedError()
+        return rules + [
+            Rule(pattern=self.INPUT_ASSET_TYPE, strategy=self.NAME),
+        ]
 
 class Source[ConfigType: BaseModel](Module[ConfigType]):
 

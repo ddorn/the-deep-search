@@ -160,7 +160,7 @@ class Database:
                 asset.next_steps_created,
                 asset.type,
                 asset.content,
-                str(asset.path),
+                str(asset.path) if asset.path else None,
             ),
         )
 
@@ -177,10 +177,17 @@ class Database:
 
         return self._make_ordered_list_from_results(rows, asset_ids, Asset)
 
-    def get_asset_for_document(self, document_id: int, type_: str) -> list[Asset]:
+    def get_assets_for_document(self, document_id: int, type_: str | None = None) -> list[Asset]:
+        if type_ is None:
+            where = "document_id = ?"
+            args = (document_id,)
+        else:
+            where = "document_id = ? AND type = ?"
+            args = (document_id, type_)
+
         rows = self.cursor.execute(
-            "SELECT * FROM assets WHERE document_id = ? AND type = ?",
-            (document_id, type_),
+            f"SELECT * FROM assets WHERE {where}",
+            args,
         ).fetchall()
         return [Asset(**row) for row in rows]
 

@@ -1,5 +1,6 @@
 import openai
-from core_types import AssetType, Rule, Task, PartialAsset
+from constants import SYNC_PATTERN
+from core_types import AssetType, Task, PartialAsset
 from strategies.strategy import Strategy
 from storage import get_db
 import numpy as np
@@ -9,16 +10,11 @@ class EmbedChunksStrategy(Strategy):
     NAME = "embed_chunks"
     PRIORITY = 1
     MAX_BATCH_SIZE = 100
-    RESOURCES = ["openai"]
+    INPUT_ASSET_TYPE = AssetType.CHUNK_ID
 
     def __init__(self, config):
         super().__init__(config)
         self.openai = openai.AsyncClient()
-
-    def add_rules(self, rules):
-        return rules + [
-            Rule(pattern=AssetType.CHUNK_ID, strategy=self.NAME),
-        ]
 
     async def process_all(self, tasks: list[Task]):
         db = get_db()
@@ -43,6 +39,13 @@ class EmbedChunksStrategy(Strategy):
 
     async def embed_texts(self, texts: list[str]) -> np.ndarray:
         db = get_db()
+
+        # We first remove the syncing tokens
+        texts = [
+            SYNC_PATTERN.sub("", text)
+            for text in texts
+        ]
+
         response = await self.openai.embeddings.create(
             dimensions=db.config.global_config.embedding_dimension,
             model="text-embedding-3-small",

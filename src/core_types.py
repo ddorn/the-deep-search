@@ -9,7 +9,6 @@ class TaskStatus(StrEnum):
     PENDING = "pending"
     IN_PROGRESS = "in_progress"
     DONE = "done"
-    BLOCKED = "blocked"
 
 
 class DBModel(BaseModel):
@@ -51,6 +50,7 @@ class AssetType(StrEnum):
     EMBEDDING_ID = "embedding_id"
     GENERIC_FILE = "generic_file"
     TEXT_FILE = "text_file"
+    SYNCED_TEXT_FILE = "synced_text_file"
 
 
 class PartialAsset(BaseModel):

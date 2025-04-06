@@ -1,8 +1,9 @@
 import asyncio
+from collections import defaultdict
 from anyio import Path
 from config import load_config
 from constants import DIRS
-from core_types import AssetType
+from core_types import Asset, AssetType
 from storage import DATABASES, get_db, set_db, Database
 from strategies.embed_chunks import EmbedChunksStrategy
 
@@ -31,7 +32,7 @@ def embed(text: str):
     embedding = asyncio.run(EmbedChunksStrategy(None).embed_texts([text]))[0]
     return embedding
 
-query = st.text_input("Query", value="What is the capital of France?")
+query = st.text_input("Query", value="delete")
 
 if query:
     embedding = embed(query)
@@ -42,19 +43,37 @@ if query:
     top_chunks = db.get_chunks(top_chunks_ids)
 
     docs_ids = set(chunk.document_id for chunk in top_chunks)
-    text_assets = [
-        db.get_asset_for_document(doc_id, AssetType.TEXT_FILE)[0]
-        for doc_id in docs_ids
-    ]
 
+    assets: dict[int, dict[str, list[Asset]]] = {}
+    for doc_id in docs_ids:
+        assets[doc_id] = defaultdict(list)
+        for asset in db.get_assets_for_document(doc_id):
+            assets[doc_id][asset.type].append(asset)
 
-    tabs = st.tabs([str(asset.path) for asset in text_assets])
-    for tab, asset in zip(tabs, text_assets):
-        path = asset.path
+    tabs = st.tabs([str(doc_id) for doc_id in docs_ids])
+    for tab, doc_id in zip(tabs, docs_ids):
         with tab:
-            st.markdown(f"### {path}")
-            # For .md and .txt files, we can read the text
-            if path.suffix in [".md", ".txt"]:
-                st.markdown(path.read_text())
-            else:
-                st.code(path.read_text())
+            doc_assets = assets[doc_id]
+            # pick the type to display
+            type_ = st.selectbox("Type", list(doc_assets.keys()), index=0, key=f"type_{doc_id}")
+            assets_of_type = doc_assets[type_]
+
+            for asset in assets_of_type:
+                if asset.path is not None:
+                    st.markdown(f"### {asset.path}")
+                    st.code(asset.path.read_text())
+                elif asset.type == AssetType.CHUNK_ID:
+                    chunk = db.get_chunks([int(asset.content)])[0]
+                    st.markdown(f"#### Chunk {chunk.document_order}")
+                    st.code(chunk.content)
+                else:
+                    st.markdown(f"### Asset {asset.id}")
+                    st.code(asset.content)
+
+            # path = asset.path
+            # st.markdown(f"### {path}")
+            # # For .md and .txt files, we can read the text
+            # if path.suffix in [".md", ".txt"]:
+            #     st.markdown(path.read_text())
+            # else:
+            #     st.code(path.read_text())

@@ -15,12 +15,8 @@ class AutoProcessStrategy(Strategy):
     NAME = "auto_process"
     PRIORITY = 0
     MAX_BATCH_SIZE = 100
-    RESOURCES = []
+    INPUT_ASSET_TYPE = AssetType.GENERIC_FILE
 
-    def add_rules(self, rules: list[Rule]) -> list[Rule]:
-        return rules + [
-            Rule(pattern=AssetType.GENERIC_FILE, strategy=self.NAME),
-        ]
 
     async def process_all(self, tasks: list[Task]) -> None:
         assets = get_db().get_assets([task.input_asset_id for task in tasks])

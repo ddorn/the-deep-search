@@ -2,12 +2,11 @@ import asyncio
 from anyio import Path
 from config import load_config
 from constants import DIRS
+from core_types import AssetType
 from storage import DATABASES, get_db, set_db, Database
 from strategies.embed_chunks import EmbedChunksStrategy
 
 import streamlit as st
-
-st.title("My search")
 
 with st.sidebar:
     if st.button("Reload db"):
@@ -25,28 +24,37 @@ db = get_db()
 embeddings, chunk_to_idx = db.load_embeddings()
 idx_to_chunk = {v: k for k, v in chunk_to_idx.items()}
 
-
-st.write(f"Loaded {len(embeddings)} embeddings!")
-st.write(str(idx_to_chunk))
+st.sidebar.write(f"Loaded {len(embeddings)} embeddings!")
 
 @st.cache_data
 def embed(text: str):
     embedding = asyncio.run(EmbedChunksStrategy(None).embed_texts([text]))[0]
     return embedding
 
-with st.form(key="query_form"):
-    query = st.text_input("Query", value="What is the capital of France?")
-    submit_button = st.form_submit_button(label="Submit")
+query = st.text_input("Query", value="What is the capital of France?")
 
-if submit_button:
+if query:
     embedding = embed(query)
 
     distances = embeddings @ embedding
     top5 = distances.argsort()[-5:][::-1]
-    st.write(top5)
     top_chunks_ids = [idx_to_chunk[i] for i in top5]
     top_chunks = db.get_chunks(top_chunks_ids)
 
-    st.write("Top 5 chunks:")
-    for i, chunk in enumerate(top_chunks):
-        st.write(f"**{i}**: {chunk.content}")
+    docs_ids = set(chunk.document_id for chunk in top_chunks)
+    text_assets = [
+        db.get_asset_for_document(doc_id, AssetType.TEXT_FILE)[0]
+        for doc_id in docs_ids
+    ]
+
+
+    tabs = st.tabs([str(asset.path) for asset in text_assets])
+    for tab, asset in zip(tabs, text_assets):
+        path = asset.path
+        with tab:
+            st.markdown(f"### {path}")
+            # For .md and .txt files, we can read the text
+            if path.suffix in [".md", ".txt"]:
+                st.markdown(path.read_text())
+            else:
+                st.code(path.read_text())

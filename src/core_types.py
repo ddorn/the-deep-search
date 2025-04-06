@@ -56,7 +56,7 @@ class AssetType(StrEnum):
 class PartialAsset(BaseModel):
     document_id: int
     created_by_task_id: int | None
-    next_step_id: int | None = None
+    next_steps_created: bool = False
     type: str
     content: str | None = None
     path: Path | None = None

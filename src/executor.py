@@ -8,7 +8,7 @@ from config import Config
 from sources import BUILT_IN_SOURCES
 from strategies import BUILT_IN_STRATEGIES
 from strategies.strategy import Source, Strategy
-from core_types import PartialTask, Rule, Task, TaskStatus
+from core_types import AssetType, PartialTask, Rule, Task, TaskStatus
 from storage import get_db
 from logs import logger
 
@@ -39,7 +39,6 @@ class Executor:
         strategies = set(task.strategy for task in tasks)
         assert len(strategies) == 1, f"Tasks have different strategies: {strategies}"
         strategy = self.strategies[strategies.pop()]
-
 
         logger.debug(f"Running {len(tasks)} tasks for strategy '{strategy.NAME}'")
         task_ids = [task.id for task in tasks]
@@ -114,25 +113,20 @@ class Executor:
         # Save the new config
         self.db.save_config(new_config)
 
-    _asset_types_warnings = set()
-
     def create_tasks_from_unhandled_assets(self):
         db = get_db()
 
         for asset in db.get_unhandled_assets():
             for rule in self.rules:
                 if re.match(rule.pattern, asset.type):
-                    task_id = db.create_task(PartialTask(
-                        strategy=rule.strategy,
-                        document_id=asset.document_id,
-                        input_asset_id=asset.id,
-                        status=TaskStatus.PENDING,
-                    ), commit=False)
-                    db.set_asset_next_step(asset.id, task_id)
+                    db.create_task(
+                        PartialTask(
+                            strategy=rule.strategy,
+                            document_id=asset.document_id,
+                            input_asset_id=asset.id,
+                            status=TaskStatus.PENDING,
+                        ),
+                        commit=False,
+                    )
 
-                    break
-            else:
-                if asset.type not in self._asset_types_warnings:
-                    # Log the warning only once
-                    self._asset_types_warnings.add(asset.type)
-                    logger.warning(f"Unhandled asset type: {asset.type}")
+            db.set_asset_next_steps_created(asset.id)

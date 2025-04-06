@@ -41,7 +41,10 @@ def rerun_strategy(strategy: str, config: Path = None):
 
     db = Database(DIRS.user_data_path / "db.sqlite", config=parsed_config)
 
-    strategies = set(task["strategy"] for task in db.cursor.execute("SELECT DISTINCT strategy FROM tasks").fetchall())
+    strategies = set(
+        task["strategy"]
+        for task in db.cursor.execute("SELECT DISTINCT strategy FROM tasks").fetchall()
+    )
     if strategy not in strategies:
         logger.info(f"Available strategies: {strategies}")
         logger.error(f"Strategy '{strategy}' not found in the database.")
@@ -57,12 +60,14 @@ def test(doc_id: int):
     db.delete_documents([doc_id])
 
 
-
 @app.command()
 def delete_all_data():
     shutil.rmtree(DIRS.user_data_path)
     shutil.rmtree(DIRS.user_cache_path)
-    logger.warning(f"Deleted all data in {DIRS.user_data_path} and {DIRS.user_cache_path}")
+    logger.warning(
+        f"Deleted all data in {DIRS.user_data_path} and {DIRS.user_cache_path}"
+    )
+
 
 if __name__ == "__main__":
     app()

@@ -153,11 +153,11 @@ class Database:
 
     def create_asset(self, asset: PartialAsset, commit=True) -> int:
         cur = self.cursor.execute(
-            "INSERT INTO assets (document_id, created_by_task_id, next_step_id, type, content, path) VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT INTO assets (document_id, created_by_task_id, next_steps_created, type, content, path) VALUES (?, ?, ?, ?, ?, ?)",
             (
                 asset.document_id,
                 asset.created_by_task_id,
-                asset.next_step_id,
+                asset.next_steps_created,
                 asset.type,
                 asset.content,
                 str(asset.path),
@@ -177,17 +177,23 @@ class Database:
 
         return self._make_ordered_list_from_results(rows, asset_ids, Asset)
 
-    def get_unhandled_assets(self) -> list[Asset]:
+    def get_asset_for_document(self, document_id: int, type_: str) -> list[Asset]:
         rows = self.cursor.execute(
-            "SELECT * FROM assets WHERE next_step_id IS NULL AND type IS NOT ?",
-            (AssetType.EMBEDDING_ID,),
+            "SELECT * FROM assets WHERE document_id = ? AND type = ?",
+            (document_id, type_),
         ).fetchall()
         return [Asset(**row) for row in rows]
 
-    def set_asset_next_step(self, asset_id: int, next_step_id: int):
+    def get_unhandled_assets(self) -> list[Asset]:
+        rows = self.cursor.execute(
+            "SELECT * FROM assets WHERE next_steps_created = FALSE",
+        ).fetchall()
+        return [Asset(**row) for row in rows]
+
+    def set_asset_next_steps_created(self, asset_id: int):
         self.cursor.execute(
-            "UPDATE assets SET next_step_id = ? WHERE id = ?",
-            (next_step_id, asset_id),
+            "UPDATE assets SET next_steps_created = TRUE WHERE id = ?",
+            (asset_id,),
         )
         self.db.commit()
 
@@ -475,15 +481,14 @@ class Database:
 
             document_id INTEGER,
             created_by_task_id INTEGER,
-            next_step_id INTEGER,
+            next_steps_created BOOLEAN,
 
             type TEXT NOT NULL,
             content TEXT,
             path TEXT,
 
             FOREIGN KEY(document_id) REFERENCES documents(id) ON DELETE CASCADE,
-            FOREIGN KEY(created_by_task_id) REFERENCES tasks(id) ON DELETE CASCADE,
-            FOREIGN KEY(next_step_id) REFERENCES tasks(id) ON DELETE SET NULL
+            FOREIGN KEY(created_by_task_id) REFERENCES tasks(id) ON DELETE CASCADE
         )"""
         )
 

@@ -13,7 +13,6 @@ dependencies = [
     "google-auth-httplib2>=0.2.0",
     "google-auth-oauthlib>=1.2.1",
     "joblib>=1.4.2",
-    "langchain>=0.3.23",
     "openai>=1.60.2",
     "platformdirs>=4.3.7",
     "pydantic>=2.10.6",

@@ -1,3 +1,4 @@
+# %%
 import asyncio
 
 from constants import DIRS
@@ -79,6 +80,8 @@ def drive():
     # Replace with your folder ID
     list_all_gdocs_fast(folder_id, service_account_file)
 
+
+# %%
 
 if __name__ == "__main__":
     app()

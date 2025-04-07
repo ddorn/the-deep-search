@@ -78,8 +78,8 @@ if query:
         chunk = chunks[selected_chunk]
         doc_assets = assets[chunk.document_id]
 
-        sync_ids = SYNC_PATTERN.findall(chunk.content)
-        st.write(sync_ids)
+        # sync_ids = SYNC_PATTERN.findall(chunk.content)
+        # st.write(sync_ids)
 
         # pick the type to display
         type_ = st.radio("Type to show", list(doc_assets.keys()), index=0, horizontal=True)

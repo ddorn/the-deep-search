@@ -29,7 +29,7 @@ class Database:
         self.path = path
         self.config = config
 
-        logger.debug(f"Using database at {self.path}")
+        logger.info(f"Using database at {self.path}")
         self.db = sqlite3.connect(self.path)
         self.db.row_factory = sqlite3.Row
         self.cursor = self.db.cursor()
@@ -432,7 +432,7 @@ class Database:
         ]
 
         if self.version == len(migrations):
-            logger.info(f"No migrations to run - current version is {self.version}")
+            logger.debug(f"No migrations to run - current version is {self.version}")
             return
 
         if self.version > len(migrations):

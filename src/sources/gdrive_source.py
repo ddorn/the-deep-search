@@ -36,7 +36,9 @@ class GDriveSource(FingerprintedSource[GDriveSourceConfig]):
         )
 
     def list_documents(self) -> Iterator[DocInfo]:
-        return list_all_gdocs_fast(self.config.folder_id, self.credentials)
+        logger.debug(f"Listing google docs for {self.title}. This may take a few seconds...")
+        yield from list_all_gdocs_fast(self.config.folder_id, self.credentials)
+        logger.debug(f"Finished listing google docs for {self.title}.")
 
     def mk_asset(self, document_id, doc):
         return PartialAsset(

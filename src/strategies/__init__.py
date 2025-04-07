@@ -1,3 +1,4 @@
+from .dl_audio import DlAudioStrategy
 from .add_sync_tokens import AddSyncTokenStrategy
 from .embed_chunks import EmbedChunksStrategy
 from .chunks_from_text import ChunkFromTextStrategy
@@ -9,4 +10,5 @@ BUILT_IN_STRATEGIES: dict[str, type[Module]] = {
     ChunkFromTextStrategy.NAME: ChunkFromTextStrategy,
     AutoProcessStrategy.NAME: AutoProcessStrategy,
     AddSyncTokenStrategy.NAME: AddSyncTokenStrategy,
+    DlAudioStrategy.NAME: DlAudioStrategy,
 }

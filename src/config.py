@@ -5,20 +5,6 @@ from yaml import safe_load
 from pydantic import BaseModel, Field
 
 
-example_config = """
-sources:
-  Deep Questions Podcast:
-    type: rss-podcast
-    args:
-        url: https://feeds.simplecast.com/_IjaDYA
-
-  My Notes:
-    type: local-files
-    args:
-        root: ~/notes
-"""
-
-
 class GlobalConfig(BaseModel):
     embedding_dimension: int = 1536
 

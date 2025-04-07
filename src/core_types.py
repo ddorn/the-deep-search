@@ -53,6 +53,8 @@ class AssetType(StrEnum):
     TEXT_FILE = "text_file"
     SYNCED_TEXT_FILE = "synced_text_file"
     GOOGLE_DOC = "google_doc"
+    AUDIO_TO_DL = "audio_to_dl"
+    AUDIO_FILE = "audio_file"
 
 
 class PartialAsset(BaseModel):

@@ -52,6 +52,7 @@ class AssetType(StrEnum):
     GENERIC_FILE = "generic_file"
     TEXT_FILE = "text_file"
     SYNCED_TEXT_FILE = "synced_text_file"
+    GOOGLE_DOC = "google_doc"
 
 
 class PartialAsset(BaseModel):

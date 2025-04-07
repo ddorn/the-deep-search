@@ -37,13 +37,14 @@ def embed(text: str):
     return embedding
 
 query = st.text_input("Query", value="delete")
+nb_results = st.slider("Number of results", 1, 100, 5)
 
 if query:
     embedding = embed(query)
 
     distances = embeddings @ embedding
-    top5 = distances.argsort()[-5:][::-1]
-    top_chunks_ids = [idx_to_chunk[i] for i in top5]
+    top_n = distances.argsort()[-nb_results:][::-1]
+    top_chunks_ids = [idx_to_chunk[i] for i in top_n]
     top_chunks = db.get_chunks(top_chunks_ids)
     chunks = {chunk.id: chunk for chunk in top_chunks}
 
@@ -57,11 +58,13 @@ if query:
             assets[doc_id][asset.type].append(asset)
 
     selected_chunk = st.session_state.get("selected_chunk", top_chunks[0].id)
+    if selected_chunk not in chunks:
+        selected_chunk = top_chunks[0].id
     result_col, doc_col = st.columns([1, 1])
 
     with result_col:
         st.header("Top results")
-        for chunk, score in zip(top_chunks, distances[top5]):
+        for chunk, score in zip(top_chunks, distances[top_n]):
             doc = documents[chunk.document_id]
             cols = st.columns([8, 1])
             cols[0].markdown(f"### *{doc.source_id}* :blue[{doc.title}]\n Chunk: {chunk.document_order} -- Score: {score:.3f}")
@@ -101,3 +104,20 @@ if query:
                 #     st.markdown(path.read_text())
                 # else:
                 #     st.code(path.read_text())
+
+
+# Show numbers of chunks per document
+db.cursor.execute(
+    """
+    SELECT COUNT(*), document_id
+    FROM chunks
+    GROUP BY document_id
+    """
+)
+rows = db.cursor.fetchall()
+st.write("### Number of chunks per document")
+stats = [{"document_id": row[1], "count": row[0]} for row in rows]
+stats.sort(key=lambda x: x["count"], reverse=True)
+for stat in stats:
+    doc = db.get_document_by_id(stat["document_id"])
+    st.markdown(f"Document {doc.source_id} ({doc.title}): {stat['count']} chunks")

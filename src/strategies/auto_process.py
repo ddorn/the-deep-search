@@ -2,11 +2,11 @@ import mimetypes
 import os
 from storage import get_db
 from core_types import Asset, AssetType, PartialAsset, Rule, Task, PartialTask
-from strategies.strategy import Strategy
+from strategies.strategy import Module
 from strategies import ChunkFromTextStrategy
 
 
-class AutoProcessStrategy(Strategy):
+class AutoProcessStrategy(Module):
     """
     Autoprocess tasks can be created when sources scan new documents.
     This strategy guesses what to do with the document based on the file type.
@@ -16,7 +16,6 @@ class AutoProcessStrategy(Strategy):
     PRIORITY = 0
     MAX_BATCH_SIZE = 100
     INPUT_ASSET_TYPE = AssetType.GENERIC_FILE
-
 
     async def process_all(self, tasks: list[Task]) -> None:
         assets = get_db().get_assets([task.input_asset_id for task in tasks])

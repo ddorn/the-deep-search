@@ -1,22 +1,20 @@
 import asyncio
 from collections import defaultdict
 from contextlib import ExitStack, contextmanager
-import random
 import re
 
 from config import Config
 from sources import BUILT_IN_SOURCES
 from strategies import BUILT_IN_STRATEGIES
-from strategies.strategy import Source, Strategy
-from core_types import AssetType, PartialTask, Rule, Task, TaskStatus
+from strategies.strategy import Module
+from core_types import PartialTask, Rule, Task, TaskStatus
 from storage import get_db
 from logs import logger
 
 class Executor:
 
     def __init__(self) -> None:
-        self.sources: dict[str, Source] = {}
-        self.strategies: dict[str, Strategy] = {}
+        self.strategies: dict[str, Module] = {}
         self.rules: list[Rule] = []
         self.db = get_db()
 
@@ -48,16 +46,10 @@ class Executor:
         await strategy.process_all(tasks)
         self.db.set_task_status(TaskStatus.DONE, task_ids)
 
-    async def new_main(self):
+    async def main(self):
 
         # Delete entries that are not in the new config
         self.apply_config_changes(self.db.config)
-
-        # Load all sources
-        for name, source_config in self.db.config.sources.items():
-            source_class = BUILT_IN_SOURCES[source_config.type]
-            parsed_config = source_class.CONFIG_TYPE.model_validate(source_config.args)
-            self.sources[name] = source_class(parsed_config, name)
 
         # Load all strategies
         for name, strategy_class in BUILT_IN_STRATEGIES.items():
@@ -65,6 +57,14 @@ class Executor:
             parsed_config = strategy_class.CONFIG_TYPE.model_validate(raw_config)
             self.strategies[name] = strategy_class(parsed_config)
             self.rules = self.strategies[name].add_rules(self.rules)
+
+        # Load all sources
+        for name, source_config in self.db.config.sources.items():
+            source_class = BUILT_IN_SOURCES[source_config.type]
+            parsed_config = source_class.CONFIG_TYPE.model_validate(source_config.args)
+            self.strategies[name] = source_class(parsed_config, name)
+            self.rules = self.strategies[name].add_rules(self.rules)
+
 
         self.db.restart_crashed_tasks()
 
@@ -88,8 +88,6 @@ class Executor:
     @contextmanager
     def mount_all(self):
         with ExitStack() as stack:
-            for source in self.sources.values():
-                stack.enter_context(source.mount())
             for strategy in self.strategies.values():
                 stack.enter_context(strategy.mount())
 
@@ -106,9 +104,9 @@ class Executor:
         if old_config is None or old_config == new_config:
             return
 
-        # Remove sources that are not in the new config
-        for source_name in set(old_config.sources) - set(new_config.sources):
-            for doc in self.db.get_documents_from_source(source_name):
+        # Remove modules that are not in the new config
+        for strategy_name in set(old_config.strategies) - set(new_config.strategies):
+            for doc in self.db.get_documents_from_source(strategy_name):
                 self.db.delete_document(doc.id)
                 # TODO: also delete their folder
 

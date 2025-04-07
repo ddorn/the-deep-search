@@ -1,14 +1,14 @@
 import openai
 from constants import SYNC_PATTERN
 from core_types import AssetType, Task, PartialAsset
-from strategies.strategy import Strategy
+from strategies.strategy import Module
 from storage import get_db
 import numpy as np
 
 
-class EmbedChunksStrategy(Strategy):
+class EmbedChunksStrategy(Module):
     NAME = "embed_chunks"
-    PRIORITY = 1
+    PRIORITY = -1
     MAX_BATCH_SIZE = 100
     INPUT_ASSET_TYPE = AssetType.CHUNK_ID
 

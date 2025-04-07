@@ -20,8 +20,39 @@ class Module[ConfigType: BaseModel](abc.ABC):
     NAME: ClassVar[str]
     CONFIG_TYPE: type[ConfigType] = NoConfig
 
+    MAX_BATCH_SIZE: ClassVar[int] = 1
+    PRIORITY: ClassVar[int] = 0
+    INPUT_ASSET_TYPE: ClassVar[str | None] = None
+
     def __init__(self, config: ConfigType):
         self.config = config
+
+    async def process_all(self, tasks: list[Task]) -> None:
+        """
+        Processes a batch of assets.
+
+        It is assumed that:
+        - All tasks target this strategy
+        - The input asset matches the rules from `add_rules`, or is otherwise suitable for processing by this strategy.
+        - There are at most MAX_BATCH_SIZE tasks in the batch.
+
+        Those assumptions should not be strictly enforced, as it enable
+        other strategies/plugins to provide different but suitable inputs.
+        """
+        raise NotImplementedError()
+
+    def add_rules(self, rules: list[Rule]) -> list[Rule]:
+        """
+        Modifies the rules list to tell the executor what this tasks need to process.
+
+        This can also modify rules previously added by other strategies, but needs to be done carefully.
+        """
+        if self.INPUT_ASSET_TYPE is None:
+            return rules
+        else:
+            return rules + [
+                Rule(pattern=self.INPUT_ASSET_TYPE, strategy=self.NAME),
+            ]
 
     def data_folder_name(self) -> str:
         """
@@ -65,47 +96,6 @@ class Module[ConfigType: BaseModel](abc.ABC):
         pass
 
 
-class Strategy[ConfigType: BaseModel](Module[ConfigType]):
-    """
-    A strategy describes how to do a specific type of task.
-    """
-
-    NAME: ClassVar[str]
-    PRIORITY: ClassVar[int]
-    MAX_BATCH_SIZE: ClassVar[int]
-    INPUT_ASSET_TYPE: ClassVar[str]
-
-    def __init__(self, config: ConfigType):
-        super().__init__(config)
-
-        for attribute in ["NAME", "PRIORITY", "MAX_BATCH_SIZE"]:
-            if not hasattr(self, attribute):
-                raise ValueError(f"Strategy {self.__class__.__name__} must have a {attribute} attribute")
-
-    @abc.abstractmethod
-    async def process_all(self, tasks: list[Task]) -> None:
-        """
-        Processes a batch of assets.
-
-        It is assumed that:
-        - All tasks target this strategy
-        - The input asset matches the rules from `add_rules`, or is otherwise suitable for processing by this strategy.
-        - There are at most MAX_BATCH_SIZE tasks in the batch.
-
-        Those assumptions should not be strictly enforced, as it enable
-        other strategies/plugins to provide different but suitable inputs.
-        """
-        raise NotImplementedError()
-
-    def add_rules(self, rules: list[Rule]) -> list[Rule]:
-        """
-        Modifies the rules list to tell the executor what this tasks need to process.
-
-        This can also modify rules previously added by other strategies, but needs to be done carefully.
-        """
-        return rules + [
-            Rule(pattern=self.INPUT_ASSET_TYPE, strategy=self.NAME),
-        ]
 
 class Source[ConfigType: BaseModel](Module[ConfigType]):
 

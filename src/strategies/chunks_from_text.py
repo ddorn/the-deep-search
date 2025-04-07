@@ -5,7 +5,7 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 
 from constants import SYNC_PATTERN
 from core_types import AssetType, PartialAsset, PartialChunk, Task
-from strategies.strategy import Strategy
+from strategies.strategy import Module
 from storage import get_db
 
 
@@ -15,13 +15,13 @@ class ResponseModel(BaseModel):
 
 class ChunkFromTextConfig(BaseModel):
     # model: str = "gpt-4o-mini"
-    chars_per_chunk: int = 500
+    chars_per_chunk: int = 1000
 
 
-class ChunkFromTextStrategy(Strategy[ChunkFromTextConfig]):
+class ChunkFromTextStrategy(Module[ChunkFromTextConfig]):
     NAME = "chunk_from_text"
     PRIORITY = 0
-    MAX_BATCH_SIZE = 100
+    MAX_BATCH_SIZE = 10
     INPUT_ASSET_TYPE = AssetType.SYNCED_TEXT_FILE
 
     CONFIG_TYPE = ChunkFromTextConfig
@@ -37,7 +37,6 @@ class ChunkFromTextStrategy(Strategy[ChunkFromTextConfig]):
             strip_whitespace=False,
             separators=["\n\n", "\n", " ", SYNC_PATTERN.pattern, ""],
         )
-
 
     async def process_all(self, tasks: list[Task]) -> None:
         db = get_db()

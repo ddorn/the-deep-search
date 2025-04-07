@@ -1,14 +1,14 @@
-
+import re
 from constants import SYNC_FORMAT
 from core_types import AssetType, PartialAsset, Task
 from storage import get_db
-from strategies.strategy import Strategy
+from strategies.strategy import Module
 
 
-class AddSyncTokenStrategy(Strategy):
+class AddSyncTokenStrategy(Module):
     NAME = "add_sync_tokens"
-    PRIORITY = 1
-    MAX_BATCH_SIZE = 100
+    PRIORITY = 0
+    MAX_BATCH_SIZE = 10
 
     INPUT_ASSET_TYPE = AssetType.TEXT_FILE
 
@@ -30,36 +30,58 @@ class AddSyncTokenStrategy(Strategy):
                 path=out_path,
             ))
 
-
     def add_sync_tokens(self, text: str) -> str:
-        # We want to add tokens quite regularly, probably every 100 characters
-        # but it would be nice to have them in nice places:
+        # We want to have a sync token at most every chunk_size
+        # We try try to follow this constraint, by going down this list when needed:
         # - end of a line
+        # - end of a sentence
         # - end of a word
-        # So we try to put it after ±10% of the chunk size, trying first to find
-        # an end of a line there, or if not possible, an end of a word
+        # - or abruptly cut the text
 
-        chunk_size = 100
-        wiggle_room = chunk_size // 5
-        text_pieces = []
+        parts = []
         start = 0
-        while start < len(text):
-            candidate_end = start + chunk_size + wiggle_room
-            candidate = text[start:candidate_end]
+        chunk_size = 100
 
-            # try to find a line break
-            if (line_break := candidate.rfind("\n")) > chunk_size - wiggle_room:
-                new_chunk = candidate[:line_break]
-            # try to find a space
-            elif (space := candidate.rfind(" ")) > chunk_size - wiggle_room:
-                new_chunk = candidate[:space]
+        token_idx = 0
+        while start < len(text):
+            candidate = text[start:start + chunk_size]
+
+            # Find the first line break
+            if (line_break := candidate.find("\n")) != -1:
+                token_pos = start + line_break
+                end = token_pos + 1
+
+            # Find the last sentence end
+            elif (matches := list(re.finditer(r"[.!?]\s+", candidate))):
+                match = matches[-1]
+                token_pos = start + match.start() + 1
+                end = start + match.end()
+
+            # Find the last space
+            elif (space := candidate.rfind(" ")) > 0:
+                token_pos = start + space
+                end = start + space + 1
+
             # Just cut it at the chunk size
             else:
-                new_chunk = candidate[:chunk_size]
+                token_pos = start + chunk_size
+                end = start + chunk_size
 
-            text_pieces.append(new_chunk)
-            start += len(new_chunk)
-            # Add a sync token. // 2 because we are adding two tokens per chunk
-            text_pieces.append(SYNC_FORMAT.format(id=len(text_pieces) // 2))
 
-        return "".join(text_pieces)
+            chunk = text[start:token_pos]
+            chunk_end = text[token_pos:end]
+
+            # Don't add sync tokens after empty lines
+            if re.match(r"^\s*$", chunk):
+                parts.append(chunk + chunk_end)
+                start = end
+                continue
+
+            sync_token = SYNC_FORMAT.format(id=token_idx)
+            token_idx += 1
+
+            part = chunk + sync_token + chunk_end
+            parts.append(part)
+            start = end
+
+        return "".join(parts)

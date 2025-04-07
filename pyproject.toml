@@ -8,6 +8,7 @@ dependencies = [
     "aiohttp>=3.11.11",
     #"deepgram-sdk>=3.8.0",
     "fastapi>=0.115.8",
+    "feedparser>=6.0.11",
     "gitignore-filter>=0.2.3",
     "google-api-python-client>=2.166.0",
     "google-auth-httplib2>=0.2.0",

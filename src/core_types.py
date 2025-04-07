@@ -2,6 +2,7 @@ import datetime
 from enum import StrEnum
 from pathlib import Path
 from typing import Annotated
+
 from pydantic import BaseModel, Field
 
 
@@ -13,9 +14,7 @@ class TaskStatus(StrEnum):
 
 class DBModel(BaseModel):
     id: int
-    created_at: Annotated[
-        datetime.datetime, Field(default_factory=datetime.datetime.now)
-    ]
+    created_at: Annotated[datetime.datetime, Field(default_factory=datetime.datetime.now)]
 
 
 class PartialTask(BaseModel):
@@ -28,10 +27,12 @@ class PartialTask(BaseModel):
 class Task(PartialTask, DBModel):
     pass
 
+
 class PartialChunk(BaseModel):
     document_id: int
     document_order: int
     content: str
+
 
 class Chunk(PartialChunk, DBModel):
     pass
@@ -41,6 +42,7 @@ class PartialDocument(BaseModel):
     source_urn: str
     source_id: str
     title: str
+
 
 class Document(PartialDocument, DBModel):
     pass

@@ -1,16 +1,16 @@
+import abc
 from contextlib import contextmanager
 from functools import cached_property
 from pathlib import Path
-import abc
 from typing import ClassVar
 
 from openai import BaseModel
 
 from constants import DIRS
-from core_types import Asset, Rule, Task
-from storage import get_db
+from core_types import Rule, Task
 
 NOT_GIVEN = object()
+
 
 class NoConfig(BaseModel):
     pass
@@ -94,7 +94,6 @@ class Module[ConfigType: BaseModel](abc.ABC):
         Called when the module is unmounted.
         """
         pass
-
 
 
 class Source[ConfigType: BaseModel](Module[ConfigType]):

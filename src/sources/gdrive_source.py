@@ -1,26 +1,25 @@
-from asyncio import Task
 import asyncio
-from pathlib import Path
+import datetime
 import re
+from asyncio import Task
+from pathlib import Path
 from typing import Iterator
 
 import aiohttp
-from pydantic import BaseModel
-from googleapiclient.discovery import build
 from google.oauth2 import service_account
-import datetime
-
-import requests
+from googleapiclient.discovery import build
+from pydantic import BaseModel
 
 from core_types import Asset, AssetType, PartialAsset, Rule
-from sources.fingerprinted_source import DocInfo, FingerprintedSource
 from logs import logger
+from sources.fingerprinted_source import DocInfo, FingerprintedSource
 from storage import get_db
 
 
 class GDriveSourceConfig(BaseModel):
     folder_id: str
     service_account_file: Path
+
 
 class GDriveSource(FingerprintedSource[GDriveSourceConfig]):
     NAME = "google-drive"
@@ -48,7 +47,6 @@ class GDriveSource(FingerprintedSource[GDriveSourceConfig]):
             content=doc.urn,
         )
 
-
     def add_rules(self, rules):
         return rules + [
             Rule(pattern=AssetType.GOOGLE_DOC + "/" + self.title, strategy=self.title),
@@ -62,10 +60,7 @@ class GDriveSource(FingerprintedSource[GDriveSourceConfig]):
 
         async with aiohttp.ClientSession() as session:
             await asyncio.gather(
-                *[
-                    self.process(task, asset, session)
-                    for task, asset in zip(tasks, assets)
-                ]
+                *[self.process(task, asset, session) for task, asset in zip(tasks, assets)]
             )
 
     async def process(self, task: Task, asset: Asset, session: aiohttp.ClientSession):
@@ -88,18 +83,21 @@ class GDriveSource(FingerprintedSource[GDriveSourceConfig]):
         path = self.path_for_asset("gdoc", asset.content)
         path.write_text(gdoc)
 
-        get_db().create_asset(PartialAsset(
-            document_id=task.document_id,
-            created_by_task_id=task.id,
-            type=AssetType.TEXT_FILE,
-            path=path,
-        ))
+        get_db().create_asset(
+            PartialAsset(
+                document_id=task.document_id,
+                created_by_task_id=task.id,
+                type=AssetType.TEXT_FILE,
+                path=path,
+            )
+        )
+
 
 # Thanks claude!
 def list_all_gdocs_fast(folder_id: str, credentials) -> list[DocInfo]:
 
     # Build the Drive service
-    service = build('drive', 'v3', credentials=credentials)
+    service = build("drive", "v3", credentials=credentials)
 
     # print("Fetching folder structure and documents...")
     # Store folder info and docs
@@ -109,7 +107,7 @@ def list_all_gdocs_fast(folder_id: str, credentials) -> list[DocInfo]:
 
     # Get root folder info
     root_folder = service.files().get(fileId=folder_id, fields="name").execute()
-    folders[folder_id] = root_folder['name']
+    folders[folder_id] = root_folder["name"]
 
     # Use breadth-first traversal
     current_level = [folder_id]
@@ -128,32 +126,36 @@ def list_all_gdocs_fast(folder_id: str, credentials) -> list[DocInfo]:
 
         # Paginate through results if needed
         while True:
-            response = service.files().list(
-                q=query,
-                fields="nextPageToken, files(id, name, mimeType, parents, modifiedTime)",
-                pageToken=page_token,
-                pageSize=1000
-            ).execute()
+            response = (
+                service.files()
+                .list(
+                    q=query,
+                    fields="nextPageToken, files(id, name, mimeType, parents, modifiedTime)",
+                    pageToken=page_token,
+                    pageSize=1000,
+                )
+                .execute()
+            )
 
             # Process each item (folder or document)
-            for item in response.get('files', []):
-                if item['mimeType'] == 'application/vnd.google-apps.folder':
+            for item in response.get("files", []):
+                if item["mimeType"] == "application/vnd.google-apps.folder":
                     # It's a folder
-                    folder_id = item['id']
+                    folder_id = item["id"]
                     if folder_id not in all_folder_ids:
-                        folders[folder_id] = item['name']
+                        folders[folder_id] = item["name"]
                         # Store the parent (first parent if multiple)
-                        if 'parents' in item and item['parents']:
-                            folder_hierarchy[folder_id] = item['parents'][0]
+                        if "parents" in item and item["parents"]:
+                            folder_hierarchy[folder_id] = item["parents"][0]
                         next_level.append(folder_id)
                         all_folder_ids.add(folder_id)
                 else:
                     # It's a Google Doc
-                    if 'parents' in item and item['parents']:
-                        item['folder_id'] = item['parents'][0]
+                    if "parents" in item and item["parents"]:
+                        item["folder_id"] = item["parents"][0]
                     all_docs.append(item)
 
-            page_token = response.get('nextPageToken')
+            page_token = response.get("nextPageToken")
             if not page_token:
                 break
 
@@ -165,14 +167,14 @@ def list_all_gdocs_fast(folder_id: str, credentials) -> list[DocInfo]:
     # Build full paths for each document
     returned_docs = []
     for doc in all_docs:
-        modified_time = datetime.datetime.fromisoformat(doc['modifiedTime'].replace('Z', '+00:00'))
+        modified_time = datetime.datetime.fromisoformat(doc["modifiedTime"].replace("Z", "+00:00"))
 
         # Build the full path
-        path_parts = [doc['name']]
+        path_parts = [doc["name"]]
 
         # Only process hierarchy if folder_id is available
-        if 'folder_id' in doc:
-            current_folder = doc['folder_id']
+        if "folder_id" in doc:
+            current_folder = doc["folder_id"]
 
             # Traverse up the folder hierarchy
             while current_folder in folder_hierarchy:
@@ -189,8 +191,8 @@ def list_all_gdocs_fast(folder_id: str, credentials) -> list[DocInfo]:
 
         returned_docs.append(
             DocInfo(
-                urn=doc['id'],
-                title=doc['name'],
+                urn=doc["id"],
+                title=doc["name"],
                 fingerprint=modified_time.isoformat(),
             )
         )

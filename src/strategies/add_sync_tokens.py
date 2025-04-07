@@ -1,4 +1,5 @@
 import re
+
 from constants import SYNC_FORMAT
 from core_types import AssetType, PartialAsset, Task
 from storage import get_db
@@ -22,13 +23,15 @@ class AddSyncTokenStrategy(Module):
             out_path = self.path_for_asset("sync_tokens", asset.path.name)
             out_path.write_text(with_sync_tokens)
 
-            db.create_asset(PartialAsset(
-                document_id=task.document_id,
-                created_by_task_id=task.id,
-                type=AssetType.SYNCED_TEXT_FILE,
-                content=None,
-                path=out_path,
-            ))
+            db.create_asset(
+                PartialAsset(
+                    document_id=task.document_id,
+                    created_by_task_id=task.id,
+                    type=AssetType.SYNCED_TEXT_FILE,
+                    content=None,
+                    path=out_path,
+                )
+            )
 
     def add_sync_tokens(self, text: str) -> str:
         # We want to have a sync token at most every chunk_size
@@ -44,7 +47,7 @@ class AddSyncTokenStrategy(Module):
 
         token_idx = 0
         while start < len(text):
-            candidate = text[start:start + chunk_size]
+            candidate = text[start : start + chunk_size]
 
             # Find the first line break
             if (line_break := candidate.find("\n")) != -1:
@@ -52,7 +55,7 @@ class AddSyncTokenStrategy(Module):
                 end = token_pos + 1
 
             # Find the last sentence end
-            elif (matches := list(re.finditer(r"[.!?]\s+", candidate))):
+            elif matches := list(re.finditer(r"[.!?]\s+", candidate)):
                 match = matches[-1]
                 token_pos = start + match.start() + 1
                 end = start + match.end()
@@ -66,7 +69,6 @@ class AddSyncTokenStrategy(Module):
             else:
                 token_pos = start + chunk_size
                 end = start + chunk_size
-
 
             chunk = text[start:token_pos]
             chunk_end = text[token_pos:end]

@@ -1,8 +1,9 @@
 import aiohttp
-from core_types import AssetType, Task, PartialAsset
-from strategies.strategy import Module
-from storage import get_db
+
+from core_types import AssetType, PartialAsset, Task
 from logs import logger
+from storage import get_db
+from strategies.strategy import Module
 
 
 class DlAudioStrategy(Module):
@@ -23,10 +24,9 @@ class DlAudioStrategy(Module):
     async def process_one(self, asset, task, session):
         db = get_db()
 
+        audio_file_path = self.path_for_asset("original_audio", str(task.document_id))
 
-        audio_file_path = self.path_for_asset('original_audio', str(task.document_id))
-
-        with open(audio_file_path, 'wb') as f:
+        with open(audio_file_path, "wb") as f:
             async with session.get(asset.content) as response:
                 logger.info(f"Downloading audio file from {asset.content} to {audio_file_path}")
                 if response.status != 200:
@@ -38,9 +38,11 @@ class DlAudioStrategy(Module):
                     f.write(chunk)
 
         # Create the asset for the downloaded audio file
-        db.create_asset(PartialAsset(
-            document_id=task.document_id,
-            created_by_task_id=task.id,
-            type=AssetType.AUDIO_FILE,
-            path=audio_file_path,
-        ))
+        db.create_asset(
+            PartialAsset(
+                document_id=task.document_id,
+                created_by_task_id=task.id,
+                type=AssetType.AUDIO_FILE,
+                path=audio_file_path,
+            )
+        )

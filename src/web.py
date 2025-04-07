@@ -1,13 +1,14 @@
 import asyncio
 from collections import defaultdict
-from anyio import Path
-from config import load_config
-from constants import DIRS, SYNC_PATTERN
-from core_types import Asset, AssetType
-from storage import DATABASES, get_db, set_db, Database
-from strategies.embed_chunks import EmbedChunksStrategy
 
 import streamlit as st
+from anyio import Path
+
+from config import load_config
+from constants import DIRS
+from core_types import Asset, AssetType
+from storage import DATABASES, Database, get_db, set_db
+from strategies.embed_chunks import EmbedChunksStrategy
 
 st.set_page_config(
     page_title="The deep search",
@@ -31,10 +32,12 @@ idx_to_chunk = {v: k for k, v in chunk_to_idx.items()}
 
 st.sidebar.write(f"Loaded {len(embeddings)} embeddings!")
 
+
 @st.cache_data
 def embed(text: str):
     embedding = asyncio.run(EmbedChunksStrategy(None).embed_texts([text]))[0]
     return embedding
+
 
 query = st.text_input("Query", value="delete")
 nb_results = st.slider("Number of results", 1, 100, 5)
@@ -67,7 +70,9 @@ if query:
         for chunk, score in zip(top_chunks, distances[top_n]):
             doc = documents[chunk.document_id]
             cols = st.columns([8, 1])
-            cols[0].markdown(f"### *{doc.source_id}* :blue[{doc.title}]\n Chunk: {chunk.document_order} -- Score: {score:.3f}")
+            cols[0].markdown(
+                f"### *{doc.source_id}* :blue[{doc.title}]\n Chunk: {chunk.document_order} -- Score: {score:.3f}"
+            )
             if cols[1].button("👉", key=f"chunk_{chunk.id}", use_container_width=True):
                 selected_chunk = chunk.id
                 st.session_state.selected_chunk = selected_chunk

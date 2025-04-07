@@ -1,31 +1,29 @@
 #!/usr/bin/env -S uv run --frozen
-
+import asyncio
 import contextlib
 import itertools
 import json
-from multiprocessing import context
 import os
 import shlex
 import shutil
 import subprocess
 import sys
-import time
-from typing import Annotated
-import httpx
-import typer
-import asyncio
-from tqdm import tqdm
-from pathlib import Path
-from pydantic import BaseModel, Field, AliasPath, AliasChoices
-from rich import print as rprint
 import tempfile
-from joblib import Parallel, delayed
-import deepgram
-import openai
-
+import time
+from pathlib import Path
+from typing import Annotated
 
 import databases
+import deepgram
+import httpx
+import numpy as np
+import openai
+import typer
+from joblib import Parallel, delayed
+from pydantic import AliasChoices, AliasPath, BaseModel, Field
+from rich import print as rprint
 from runner import Parallel as MyParallel
+from tqdm import tqdm
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
 
@@ -49,6 +47,7 @@ def gather_metadata(podcast: Path) -> Podcast:
 
     output = subprocess.check_output(cmd, shell=True)
     return Podcast.model_validate_json(output)
+
 
 def ensure_chapters_cover_podcast(podcast: Podcast) -> Podcast:
     """Add chapters for parts that are not covered by chapters."""
@@ -96,6 +95,7 @@ async def run_in_parrallel(tasks, max_concurrent: int, progress=True):
     finally:
         if progress:
             bar.close()
+
 
 '''
 
@@ -162,6 +162,7 @@ async def split_chapter(podcast: Path, chapter: Chapter, chapter_path: Path):
     if process.returncode != 0:
         raise RuntimeError("ffmpeg failed")
 '''
+
 
 @app.command(no_args_is_help=True)
 def compress(directory: Path, output: Path):
@@ -234,7 +235,9 @@ def cost(directory: Path, cost_per_minute: float = 0.006):
         runner.add(gather_metadata, title=file.stem)(file)
     metadata_results = runner.run()
 
-    total_duration = sum(podcast.unwrap().duration for podcast in metadata_results) / 60  # in minutes
+    total_duration = (
+        sum(podcast.unwrap().duration for podcast in metadata_results) / 60
+    )  # in minutes
 
     cost = total_duration * cost_per_minute
     rprint(f"Total duration: {total_duration / 60:.2f} hours")
@@ -325,7 +328,6 @@ def get_embedding(text: list[str]) -> list[list[float]]:
     return out
 
 
-
 @app.command(no_args_is_help=True)
 def to_sql(directory: Path):
     """
@@ -344,15 +346,26 @@ def to_sql(directory: Path):
             continue
         else:
             metadata = gather_metadata(file.with_suffix(".mp3"))
-            podcast_id = db.add_podcast_sql(databases.Podcast(id=None, title=metadata.title, filename=file.stem))
+            podcast_id = db.add_podcast_sql(
+                databases.Podcast(id=None, title=metadata.title, filename=file.stem)
+            )
 
-        paragraphs = transcript["results"]["channels"][0]["alternatives"][0]["paragraphs"]["paragraphs"]
-        paragraph_texts = [" ".join([sentence["text"] for sentence in paragraph["sentences"]]) for paragraph in paragraphs]
+        paragraphs = transcript["results"]["channels"][0]["alternatives"][0]["paragraphs"][
+            "paragraphs"
+        ]
+        paragraph_texts = [
+            " ".join([sentence["text"] for sentence in paragraph["sentences"]])
+            for paragraph in paragraphs
+        ]
 
-        db.add_paragraphs_sql([ databases.Paragraph.from_text(podcast_id, text, i) for i, text in enumerate(paragraph_texts) ])
+        db.add_paragraphs_sql(
+            [
+                databases.Paragraph.from_text(podcast_id, text, i)
+                for i, text in enumerate(paragraph_texts)
+            ]
+        )
 
     db.sql.commit()
-
 
 
 @app.command(no_args_is_help=True)
@@ -402,7 +415,6 @@ def search_old(directory: Path, query: str):
     db = databases.Databases(directory)
     with timeit():
 
-
         paragraphs = db.search(embedding)
         rprint(*paragraphs)
         return
@@ -424,8 +436,6 @@ def search_old(directory: Path, query: str):
         rprint("")
 
 
-import numpy as np
-
 @app.command(no_args_is_help=True)
 def migrate_milvus(directory: Path):
     """
@@ -440,7 +450,9 @@ def migrate_milvus(directory: Path):
     ids = np.empty((0,), dtype=str)
     embeddings = np.empty((0, databases.EMBDEDDING_DIMENSIONS), dtype=float)
 
-    iterator = db.milvus.query_iterator(db.collection_name, output_fields=["id", "vector"], batch_size=100)
+    iterator = db.milvus.query_iterator(
+        db.collection_name, output_fields=["id", "vector"], batch_size=100
+    )
     while True:
         res = iterator.next()
         if len(res) == 0:
@@ -476,7 +488,12 @@ def search(file: Path, query: str, n: int = 10):
     nicely_show_search(db, paragraphs, sim[top10])
 
 
-def nicely_show_search(db: databases.Databases, paragraphs: list[databases.Paragraph], score: list[float] | None = None, ctx_size=600):
+def nicely_show_search(
+    db: databases.Databases,
+    paragraphs: list[databases.Paragraph],
+    score: list[float] | None = None,
+    ctx_size=600,
+):
     podcasts_ids = []
     # deduplicate podcasts, keeping order
     for paragraph in paragraphs:
@@ -486,7 +503,6 @@ def nicely_show_search(db: databases.Databases, paragraphs: list[databases.Parag
     podcasts = db.get_podcasts(podcasts_ids)
     # Reorder podcasts to match the order of their ids
     podcasts = sorted(podcasts, key=lambda p: podcasts_ids.index(p.id))
-
 
     if score is not None:
         score_by_id = {p.id: s for p, s in zip(paragraphs, score)}
@@ -504,7 +520,7 @@ def nicely_show_search(db: databases.Databases, paragraphs: list[databases.Parag
 
             # Add previous paragraphs until we reach ctx_size characters
             ctx = 0
-            for p in reversed(all_paragraphs[:paragraph.paragraph_order]):
+            for p in reversed(all_paragraphs[: paragraph.paragraph_order]):
                 paragraphs_indices_to_show.add(p.paragraph_order)
                 ctx += len(p.text)
                 if ctx > ctx_size:
@@ -512,19 +528,24 @@ def nicely_show_search(db: databases.Databases, paragraphs: list[databases.Parag
 
             # Add next paragraphs until we reach ctx_size characters
             ctx = 0
-            for p in all_paragraphs[paragraph.paragraph_order + 1:]:
+            for p in all_paragraphs[paragraph.paragraph_order + 1 :]:
                 paragraphs_indices_to_show.add(p.paragraph_order)
                 ctx += len(p.text)
                 if ctx > ctx_size:
                     break
 
-        paragraphs_to_show = db.get_paragraph_in_podcast(podcast.id, list(paragraphs_indices_to_show))
+        paragraphs_to_show = db.get_paragraph_in_podcast(
+            podcast.id, list(paragraphs_indices_to_show)
+        )
         paragraphs_to_show = sorted(paragraphs_to_show, key=lambda p: p.paragraph_order)
 
         rprint(f"[purple]{podcast.title}")
         last_paragraph_idx = None
         for paragraph in paragraphs_to_show:
-            if last_paragraph_idx is not None and paragraph.paragraph_order != last_paragraph_idx + 1:
+            if (
+                last_paragraph_idx is not None
+                and paragraph.paragraph_order != last_paragraph_idx + 1
+            ):
                 rprint("...")
             last_paragraph_idx = paragraph.paragraph_order
 
@@ -540,9 +561,6 @@ def timeit():
     start = time.time()
     yield
     print(f"Time: {time.time() - start:.2f}")
-
-
-
 
 
 if __name__ == "__main__":

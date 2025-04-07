@@ -1,10 +1,9 @@
+import dotenv
 import numpy as np
 
-import dotenv
-
-from strategies.embed_chunks import EmbedChunksStrategy
 from core_types import PartialChunk, Task
 from storage import temporary_db
+from strategies.embed_chunks import EmbedChunksStrategy
 
 dotenv.load_dotenv()
 
@@ -15,14 +14,16 @@ async def test_embed_chunks_strategy():
 
     with temporary_db() as db:
         # Need to create chunks in the temporary database
-        ids = db.create_chunks([
-            PartialChunk(
-                document_id=1,
-                document_order=i,
-                content=f"This is a test chunk {i}",
-            )
-            for i in range(3)
-        ])
+        ids = db.create_chunks(
+            [
+                PartialChunk(
+                    document_id=1,
+                    document_order=i,
+                    content=f"This is a test chunk {i}",
+                )
+                for i in range(3)
+            ]
+        )
 
         # Create a task for each chunk
         tasks = [

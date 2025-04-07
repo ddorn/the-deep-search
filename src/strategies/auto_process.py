@@ -1,9 +1,8 @@
 import mimetypes
-import os
+
+from core_types import Asset, AssetType, PartialAsset, Task
 from storage import get_db
-from core_types import Asset, AssetType, PartialAsset, Rule, Task, PartialTask
 from strategies.strategy import Module
-from strategies import ChunkFromTextStrategy
 
 
 class AutoProcessStrategy(Module):
@@ -36,11 +35,13 @@ class AutoProcessStrategy(Module):
             raise ValueError(f"Can't determine actions for asset {asset} with mimetype={mimetype}")
 
         if mimetype.startswith("text/"):
-            db.create_asset(PartialAsset(
-                document_id=asset.document_id,
-                created_by_task_id=task.id,
-                type=AssetType.TEXT_FILE,
-                path=path,
-            ))
+            db.create_asset(
+                PartialAsset(
+                    document_id=asset.document_id,
+                    created_by_task_id=task.id,
+                    type=AssetType.TEXT_FILE,
+                    path=path,
+                )
+            )
         else:
             raise ValueError(f"Can't determine actions for asset {asset} with mimetype={mimetype}")

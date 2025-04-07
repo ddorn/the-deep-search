@@ -1,14 +1,14 @@
 # %%
-from pathlib import Path
 import re
+from pathlib import Path
 
 from pydantic import BaseModel
 
 from constants import SYNC_PATTERN
 from core_types import AssetType, PartialAsset, PartialChunk, Task
-from strategies.strategy import Module
-from storage import get_db
 from logs import logger
+from storage import get_db
+from strategies.strategy import Module
 
 
 class ChunkFromTextConfig(BaseModel):
@@ -38,13 +38,16 @@ class ChunkFromTextStrategy(Module[ChunkFromTextConfig]):
             text = path.read_text()
             chunks = self.chunk_text(text)
 
-            ids = db.create_chunks([
-                PartialChunk(
-                    document_id=asset.document_id,
-                    document_order=i,
-                    content=chunk,
-                ) for i, chunk in enumerate(chunks)
-            ])
+            ids = db.create_chunks(
+                [
+                    PartialChunk(
+                        document_id=asset.document_id,
+                        document_order=i,
+                        content=chunk,
+                    )
+                    for i, chunk in enumerate(chunks)
+                ]
+            )
 
             for chunk_id in ids:
                 db.create_asset(
@@ -53,7 +56,8 @@ class ChunkFromTextStrategy(Module[ChunkFromTextConfig]):
                         created_by_task_id=task.id,
                         type=AssetType.CHUNK_ID,
                         content=str(chunk_id),
-                    ))
+                    )
+                )
 
     def chunk_text(self, text: str) -> list[str]:
         # We want chunks of self.config.chars_per_chunk ± 20%
@@ -75,17 +79,16 @@ class ChunkFromTextStrategy(Module[ChunkFromTextConfig]):
             chunk_center_end = start + chunk_size - chunk_size_buffer
             chunk_center = text[start:chunk_center_end]
 
-            chunk_end_candidate = text[chunk_center_end:chunk_center_end +
-                                       chunk_size_buffer * 2]
+            chunk_end_candidate = text[chunk_center_end : chunk_center_end + chunk_size_buffer * 2]
             if chunk_end_candidate:
                 chunk_end_end = find_best_split(chunk_end_candidate)
                 chunk_end = chunk_end_candidate[:chunk_end_end]
             else:
                 chunk_end = ""
 
-            chunk_start = text[start - int(1.5 * overlap):start]
+            chunk_start = text[start - int(1.5 * overlap) : start]
             if chunk_start:
-                chunk_start_start = find_best_split(chunk_start[:-overlap // 2])
+                chunk_start_start = find_best_split(chunk_start[: -overlap // 2])
                 chunk_start = chunk_start[chunk_start_start:]
             else:
                 chunk_start = ""
@@ -99,6 +102,7 @@ class ChunkFromTextStrategy(Module[ChunkFromTextConfig]):
             parts.pop()
 
         return [overlap + chunk for overlap, chunk in parts]
+
 
 def find_best_split(text: str) -> int:
     # Find the best split point in the text
@@ -124,7 +128,7 @@ def find_best_split(text: str) -> int:
         return best_split
 
     # Find a sentence end
-    match = re.search(r'[.!?]\s*', text)
+    match = re.search(r"[.!?]\s*", text)
     if match:
         return match.end()
 
@@ -148,6 +152,7 @@ def find_best_split(text: str) -> int:
     logger.warning(f"Text: {text}")
     return 0
 
+
 # %%
 
 if __name__ == "__main__":
@@ -168,8 +173,8 @@ if __name__ == "__main__":
     chunks = strategy.chunk_text(text)
     # Show a rule to count chars
     max_len = int(chars_per_chunk * 1.4)
-    last_digits = ''.join(str(i)[-1] for i in range(max_len))
-    second_digits = ''.join(f"{i:02d}"[-2] for i in range(max_len))
+    last_digits = "".join(str(i)[-1] for i in range(max_len))
+    second_digits = "".join(f"{i:02d}"[-2] for i in range(max_len))
     print(f"   Rule: {second_digits}")
     print(f"   Rule: {last_digits}")
     markers = [" "] * (max_len + 1)

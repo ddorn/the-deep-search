@@ -4,12 +4,11 @@ from pathlib import Path
 from typing import Iterator
 
 from pydantic import BaseModel, Field
-import datetime
 
-from strategies.strategy import Source
-from storage import get_db
-from core_types import AssetType, PartialAsset, PartialDocument
+from core_types import PartialAsset, PartialDocument
 from logs import logger
+from storage import get_db
+from strategies.strategy import Source
 
 
 class DocInfo(BaseModel):
@@ -17,6 +16,7 @@ class DocInfo(BaseModel):
     title: str
     fingerprint: str
     extra: dict = Field(default_factory=dict)
+
 
 class FingerprintedSource[ConfigType: BaseModel](Source[ConfigType]):
 
@@ -77,7 +77,6 @@ class FingerprintedSource[ConfigType: BaseModel](Source[ConfigType]):
     def list_documents(self) -> Iterator[DocInfo]:
         """List documents from the source."""
         pass
-
 
     def fingerprint_path(self, urn: str) -> Path:
         return self.path_for_asset("fingerprint", urn)

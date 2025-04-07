@@ -1,12 +1,14 @@
 import feedparser
-
 from pydantic import BaseModel
+
 from core_types import AssetType, PartialAsset
-from sources.fingerprinted_source import FingerprintedSource, DocInfo
 from logs import logger
+from sources.fingerprinted_source import DocInfo, FingerprintedSource
+
 
 class RssPodcastConfig(BaseModel):
     feed: str
+
 
 class RssPodcastSource(FingerprintedSource[RssPodcastConfig]):
     NAME = "rss-podcast"
@@ -22,7 +24,7 @@ class RssPodcastSource(FingerprintedSource[RssPodcastConfig]):
                 fingerprint="",  # We never update them
                 extra=dict(
                     audio_url=self.get_audio_url(entry),
-                )
+                ),
             )
 
     def mk_asset(self, document_id, doc):

@@ -1,15 +1,14 @@
 # %%
 import asyncio
-
-from constants import DIRS
-from config import Config, load_config
-from pathlib import Path
 import shutil
+from pathlib import Path
 
 from typer import Typer
 
-from logs import logger
+from config import Config, load_config
+from constants import DIRS
 from executor import Executor
+from logs import logger
 from storage import Database, set_db
 
 app = Typer(no_args_is_help=True, add_completion=False)
@@ -65,9 +64,7 @@ def test(doc_id: int):
 def delete_all_data():
     shutil.rmtree(DIRS.user_data_path)
     shutil.rmtree(DIRS.user_cache_path)
-    logger.warning(
-        f"Deleted all data in {DIRS.user_data_path} and {DIRS.user_cache_path}"
-    )
+    logger.warning(f"Deleted all data in {DIRS.user_data_path} and {DIRS.user_cache_path}")
 
 
 @app.command()

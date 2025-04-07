@@ -2,9 +2,9 @@ from pathlib import Path
 
 import dotenv
 
-from strategies.chunks_from_text import ChunkFromTextStrategy
 from core_types import Task
 from storage import temporary_db
+from strategies.chunks_from_text import ChunkFromTextStrategy
 
 dotenv.load_dotenv()
 
@@ -42,4 +42,6 @@ async def test_chunks_from_text_strategy(tmp_path: Path):
 
         # Length should be +- 10% of the original text
         text_from_chunks = "\n".join(chunk.content for chunk in chunks)
-        assert abs(len(text_from_chunks) - len(doc)) / len(doc) < 0.1, f"Text length mismatch: {len(text_from_chunks)} vs {len(doc)}"
+        assert (
+            abs(len(text_from_chunks) - len(doc)) / len(doc) < 0.1
+        ), f"Text length mismatch: {len(text_from_chunks)} vs {len(doc)}"

@@ -1,15 +1,16 @@
 import asyncio
+import re
 from collections import defaultdict
 from contextlib import ExitStack, contextmanager
-import re
 
 from config import Config
+from core_types import PartialTask, Rule, Task, TaskStatus
+from logs import logger
 from sources import BUILT_IN_SOURCES
+from storage import get_db
 from strategies import BUILT_IN_STRATEGIES
 from strategies.strategy import Module
-from core_types import PartialTask, Rule, Task, TaskStatus
-from storage import get_db
-from logs import logger
+
 
 class Executor:
 
@@ -28,7 +29,7 @@ class Executor:
         # Pick the highest priority strategy
         strategy = max(tasks_by_strategy.keys(), key=lambda s: self.strategies[s].PRIORITY)
         tasks_for_best_strategy = tasks_by_strategy[strategy]
-        batch_to_run = tasks_for_best_strategy[:self.strategies[strategy].MAX_BATCH_SIZE]
+        batch_to_run = tasks_for_best_strategy[: self.strategies[strategy].MAX_BATCH_SIZE]
         return batch_to_run
 
     async def run_tasks(self, tasks: list[Task]) -> None:
@@ -64,7 +65,6 @@ class Executor:
             parsed_config = source_class.CONFIG_TYPE.model_validate(source_config.args)
             self.strategies[name] = source_class(parsed_config, name)
             self.rules = self.strategies[name].add_rules(self.rules)
-
 
         self.db.restart_crashed_tasks()
 

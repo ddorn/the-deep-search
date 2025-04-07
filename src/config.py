@@ -1,16 +1,19 @@
 # %%
 from pathlib import Path
 from typing import Annotated
-from yaml import safe_load
+
 from pydantic import BaseModel, Field
+from yaml import safe_load
 
 
 class GlobalConfig(BaseModel):
     embedding_dimension: int = 1536
 
+
 class SourceConfig(BaseModel):
     type: str
     args: dict
+
 
 class Config(BaseModel):
     sources: Annotated[dict[str, SourceConfig], Field(default_factory=dict)]

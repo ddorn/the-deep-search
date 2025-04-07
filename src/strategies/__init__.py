@@ -1,9 +1,10 @@
-from .dl_audio import DlAudioStrategy
 from .add_sync_tokens import AddSyncTokenStrategy
-from .embed_chunks import EmbedChunksStrategy
-from .chunks_from_text import ChunkFromTextStrategy
 from .auto_process import AutoProcessStrategy
-from .strategy import Module, Source
+from .chunks_from_text import ChunkFromTextStrategy
+from .dl_audio import DlAudioStrategy
+from .embed_chunks import EmbedChunksStrategy
+from .strategy import Module
+from .strategy import Source as Source
 
 BUILT_IN_STRATEGIES: dict[str, type[Module]] = {
     EmbedChunksStrategy.NAME: EmbedChunksStrategy,

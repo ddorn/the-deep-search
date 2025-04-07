@@ -1,26 +1,26 @@
+import json
+import shutil
+import sqlite3
 from collections import Counter
 from contextlib import contextmanager
-import json
 from pathlib import Path
-import sqlite3
-import shutil
 
 import numpy as np
 
 from config import Config
+from constants import DIRS
 from core_types import (
     Asset,
     AssetType,
     Chunk,
+    Document,
     PartialAsset,
     PartialChunk,
+    PartialDocument,
+    PartialTask,
     Task,
     TaskStatus,
-    PartialTask,
-    Document,
-    PartialDocument,
 )
-from constants import DIRS
 from logs import logger
 
 
@@ -43,13 +43,10 @@ class Database:
     ) -> list[T]:
         if len(results) != len(ids):
             missing_ids = set(ids) - {row["id"] for row in results}
-            raise ValueError(
-                f"Missing {type_.__name__} for ids: {missing_ids}"
-            )
+            raise ValueError(f"Missing {type_.__name__} for ids: {missing_ids}")
 
         object_dict = {row["id"]: type_(**row) for row in results}
         return [object_dict[object_id] for object_id in ids]
-
 
     # -- Tasks --
 
@@ -299,13 +296,17 @@ class Database:
             chunk_to_idx = json.loads((DIRS.user_data_path / "embeddings.json").read_text())
         except FileNotFoundError:
             logger.info("Embeddings files not found, creating empty embeddings.")
-            embeddings = np.zeros((0, self.config.global_config.embedding_dimension), dtype=np.float32)
+            embeddings = np.zeros(
+                (0, self.config.global_config.embedding_dimension), dtype=np.float32
+            )
             chunk_to_idx = {}
 
         # Saving ints as keys converts them to strings apparently -- we hide this.
         chunk_to_idx = {int(k): v for k, v in chunk_to_idx.items()}
 
-        assert embeddings.shape[0] == len(chunk_to_idx), "Embeddings and chunk_to_idx length mismatch"
+        assert embeddings.shape[0] == len(
+            chunk_to_idx
+        ), "Embeddings and chunk_to_idx length mismatch"
         return embeddings, chunk_to_idx
 
     def overwrite_embeddings_files(self, embeddings: np.ndarray, chunk_to_idx: dict[int, int]):
@@ -318,12 +319,18 @@ class Database:
 
         # Make space for new chunks
         new_chunks = [chunk_id for chunk_id in chunk_ids if chunk_id not in chunk_to_idx]
-        new_space = np.empty((len(new_chunks), self.config.global_config.embedding_dimension), dtype=np.float32)
+        new_space = np.empty(
+            (len(new_chunks), self.config.global_config.embedding_dimension), dtype=np.float32
+        )
         current_embeddings = np.concatenate((current_embeddings, new_space), axis=0)
-        chunk_to_idx.update({chunk_id: i for i, chunk_id in enumerate(chunk_ids, start=len(chunk_to_idx))})
+        chunk_to_idx.update(
+            {chunk_id: i for i, chunk_id in enumerate(chunk_ids, start=len(chunk_to_idx))}
+        )
 
         # Update existing ones
-        embedding_indices = [chunk_to_idx[chunk_id] for chunk_id in chunk_ids if chunk_id in chunk_to_idx]
+        embedding_indices = [
+            chunk_to_idx[chunk_id] for chunk_id in chunk_ids if chunk_id in chunk_to_idx
+        ]
         current_embeddings[embedding_indices] = embeddings
 
         self.overwrite_embeddings_files(current_embeddings, chunk_to_idx)
@@ -349,8 +356,7 @@ class Database:
         # - Delete all tasks that come after
         # - Delete all assets made by this strategy and further tasks
         tasks_to_rerun = self.cursor.execute(
-            "SELECT id, strategy FROM tasks WHERE strategy = ?",
-            (strategy,)
+            "SELECT id, strategy FROM tasks WHERE strategy = ?", (strategy,)
         ).fetchall()
 
         assets_created = []
@@ -391,14 +397,12 @@ class Database:
             [asset["id"] for asset in assets_created],
         )
         self.cursor.execute(
-            "DELETE FROM tasks WHERE id IN (%s)"
-            % ",".join("?" * len(tasks_to_delete)),
+            "DELETE FROM tasks WHERE id IN (%s)" % ",".join("?" * len(tasks_to_delete)),
             [task["id"] for task in tasks_to_delete],
         )
         self.db.commit()
         self.cursor.execute(
-            "UPDATE tasks SET status = ? WHERE strategy = ?",
-            [TaskStatus.PENDING, strategy]
+            "UPDATE tasks SET status = ? WHERE strategy = ?", [TaskStatus.PENDING, strategy]
         )
         self.db.commit()
 
@@ -540,6 +544,7 @@ def set_db(db_name: str, db: Database):
 
     DATABASES[db_name] = db
     CURRENT_DATABASE = db_name
+
 
 @contextmanager
 def temporary_db(db_name: str = "test", config: Config | None = None):

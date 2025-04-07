@@ -1,9 +1,10 @@
-import openai
-from constants import SYNC_PATTERN
-from core_types import AssetType, Task, PartialAsset
-from strategies.strategy import Module
-from storage import get_db
 import numpy as np
+import openai
+
+from constants import SYNC_PATTERN
+from core_types import AssetType, PartialAsset, Task
+from storage import get_db
+from strategies.strategy import Module
 
 
 class EmbedChunksStrategy(Module):
@@ -26,12 +27,14 @@ class EmbedChunksStrategy(Module):
         embeddings = await self.embed_texts(texts)
 
         for chunk, task in zip(chunks, tasks, strict=True):
-            db.create_asset(PartialAsset(
-                document_id=task.document_id,
-                created_by_task_id=task.id,
-                type=AssetType.EMBEDDING_ID,
-                content=str(chunk.id),
-            ))
+            db.create_asset(
+                PartialAsset(
+                    document_id=task.document_id,
+                    created_by_task_id=task.id,
+                    type=AssetType.EMBEDDING_ID,
+                    content=str(chunk.id),
+                )
+            )
 
         db.update_embeddings([chunk.id for chunk in chunks], embeddings)
 
@@ -41,10 +44,7 @@ class EmbedChunksStrategy(Module):
         db = get_db()
 
         # We first remove the syncing tokens
-        texts = [
-            SYNC_PATTERN.sub("", text)
-            for text in texts
-        ]
+        texts = [SYNC_PATTERN.sub("", text) for text in texts]
 
         response = await self.openai.embeddings.create(
             dimensions=db.config.global_config.embedding_dimension,
@@ -52,7 +52,9 @@ class EmbedChunksStrategy(Module):
             input=texts,
         )
 
-        embeddings = np.zeros((len(texts), db.config.global_config.embedding_dimension), dtype=np.float32)
+        embeddings = np.zeros(
+            (len(texts), db.config.global_config.embedding_dimension), dtype=np.float32
+        )
         for embedding in response.data:
             embeddings[embedding.index] = embedding.embedding
 

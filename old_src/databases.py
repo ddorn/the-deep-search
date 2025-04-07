@@ -1,25 +1,10 @@
-import itertools
-import json
-import os
-import shlex
-import shutil
-import sqlite3
-import subprocess
-import sys
-from typing import Annotated, Iterable, Sequence
-import httpx
-import typer
-import asyncio
-from tqdm import tqdm
-from pathlib import Path
-from pydantic import BaseModel, Field, AliasPath, AliasChoices
-from rich import print as rprint
-import tempfile
-from joblib import Parallel, delayed
-import deepgram
-from pymilvus import MilvusClient
-import openai
 import hashlib
+import sqlite3
+from pathlib import Path
+from typing import Sequence
+
+from pydantic import BaseModel
+from pymilvus import MilvusClient
 
 EMBDEDDING_DIMENSIONS = 1536
 
@@ -122,9 +107,7 @@ class Databases:
             hashes,
         ).fetchall()
         paragraphs = [
-            Paragraph(
-                id=p[0], podcast_id=p[1], hash=p[2], text=p[3], paragraph_order=p[4]
-            )
+            Paragraph(id=p[0], podcast_id=p[1], hash=p[2], text=p[3], paragraph_order=p[4])
             for p in paragraphs
         ]
         return paragraphs
@@ -134,28 +117,20 @@ class Databases:
     ) -> list[Paragraph]:
         query = "SELECT * FROM paragraphs WHERE podcast_id = ?"
         if paragraph_order is not None:
-            query += " AND paragraph_order IN (%s)" % ",".join(
-                "?" * len(paragraph_order)
-            )
-            paragraphs = self.sql.execute(
-                query, [podcast_id] + list(paragraph_order)
-            ).fetchall()
+            query += " AND paragraph_order IN (%s)" % ",".join("?" * len(paragraph_order))
+            paragraphs = self.sql.execute(query, [podcast_id] + list(paragraph_order)).fetchall()
         else:
             paragraphs = self.sql.execute(query, (podcast_id,)).fetchall()
 
         paragraphs = [
-            Paragraph(
-                id=p[0], podcast_id=p[1], hash=p[2], text=p[3], paragraph_order=p[4]
-            )
+            Paragraph(id=p[0], podcast_id=p[1], hash=p[2], text=p[3], paragraph_order=p[4])
             for p in paragraphs
         ]
         return paragraphs
 
     def get_podcast_by_filename(self, filename: str) -> Podcast | None:
         """Filename is the name of the file without the extension"""
-        return self.sql.execute(
-            "SELECT * FROM podcasts WHERE filename = ?", (filename,)
-        ).fetchone()
+        return self.sql.execute("SELECT * FROM podcasts WHERE filename = ?", (filename,)).fetchone()
 
     def get_podcasts(self, ids: Sequence[int]) -> list[Podcast]:
         podcasts = self.sql.execute(
@@ -173,9 +148,7 @@ class Databases:
 
     def get_all_milvus_ids(self) -> set[str]:
         in_milvus: set[str] = set()
-        iterator = self.milvus.query_iterator(
-            self.collection_name, output_fields=["id"]
-        )
+        iterator = self.milvus.query_iterator(self.collection_name, output_fields=["id"])
         while True:
             res = iterator.next()
             if len(res) == 0:
@@ -187,9 +160,7 @@ class Databases:
         return in_milvus
 
     def get_all_paragraph_hashes(self) -> set[str]:
-        return set(
-            p[0] for p in self.sql.execute("SELECT hash FROM paragraphs").fetchall()
-        )
+        return set(p[0] for p in self.sql.execute("SELECT hash FROM paragraphs").fetchall())
 
     def milvus_add(self, texts: list[str], embeddings: list[list[float]]):
         data = [

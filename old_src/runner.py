@@ -1,11 +1,19 @@
 import threading
-from queue import Queue
-
-from dataclasses import dataclass
 import traceback
+from dataclasses import dataclass
+from queue import Queue
 from typing import Any, Callable
-from rich import print as rprint
-from rich.progress import Progress, SpinnerColumn, TimeElapsedColumn, TextColumn, Column, TaskProgressColumn, BarColumn, TimeRemainingColumn, TaskID
+
+from rich.progress import (
+    BarColumn,
+    Column,
+    Progress,
+    TaskID,
+    TaskProgressColumn,
+    TextColumn,
+    TimeElapsedColumn,
+    TimeRemainingColumn,
+)
 
 
 class Result:
@@ -38,14 +46,17 @@ class Result:
 
 class ErrorResult(Result):
     is_error = True
+
     def __init__(self, error: Exception):
         self._error = error
 
     def __repr__(self):
         return f"ErrorResult({self._error})"
 
+
 class SuccessResult(Result):
     is_error = False
+
     def __init__(self, result: Any):
         self._result = result
 
@@ -65,7 +76,13 @@ class Task:
 
 
 class Parallel:
-    def __init__(self, n_jobs: int = 1, progress_per_task: bool = False, show_done: bool = True, show_threads: bool = True):
+    def __init__(
+        self,
+        n_jobs: int = 1,
+        progress_per_task: bool = False,
+        show_done: bool = True,
+        show_threads: bool = True,
+    ):
         self.n_jobs = n_jobs
         self.tasks: list[Task] = []
         self.progress_per_task = progress_per_task
@@ -148,15 +165,20 @@ class Parallel:
                 self.progress.add_task(f"{i} Thread started", total=None)
                 for i in range(self.n_jobs)
             ]
-        self.progress_bars.append(self.progress.add_task("[green]Total progress", total=len(self.tasks)))
+        self.progress_bars.append(
+            self.progress.add_task("[green]Total progress", total=len(self.tasks))
+        )
 
     def report_start_task(self, runner_id: int, task_id: int):
         if self.show_threads:
-            self.update_thread_progress(runner_id, description=f"[{runner_id}] Processing [yellow]{self.tasks[task_id].name}[/]")
+            self.update_thread_progress(
+                runner_id,
+                description=f"[{runner_id}] Processing [yellow]{self.tasks[task_id].name}[/]",
+            )
             self.progress.reset(self.progress_bars[runner_id])
 
     def report_task_success(self, runner_id: int, task_id: int):
-        task =  self.tasks[task_id]
+        task = self.tasks[task_id]
         if self.show_done:
             self.progress.log(f"[green]Task [yellow]{task.name}[/] completed 🎉")
 
@@ -166,12 +188,18 @@ class Parallel:
         task = self.tasks[task_id]
         self.progress.log(f"[red]Error processing {task.name}[/red]")
         self.progress.log(traceback.format_exc())
-        self.update_thread_progress(runner_id, description=f"[{runner_id}] Error processing [red]{task.name}", refresh=True)
+        self.update_thread_progress(
+            runner_id, description=f"[{runner_id}] Error processing [red]{task.name}", refresh=True
+        )
 
     def report_task_end(self, runner_id: int, task: int):
         done = sum(1 for r in self.results.values() if not r.is_error)
         errors = sum(1 for r in self.results.values() if r.is_error)
-        self.progress.update(self.progress_bars[-1], advance=1, description=f"Done: {done}, errors: {errors}, remaining: {len(self.tasks) - done - errors}")
+        self.progress.update(
+            self.progress_bars[-1],
+            advance=1,
+            description=f"Done: {done}, errors: {errors}, remaining: {len(self.tasks) - done - errors}",
+        )
 
     def report_thread_end(self, runner_id: int):
         self.update_thread_progress(runner_id, completed=True)
@@ -183,7 +211,12 @@ class Parallel:
         self.progress.log(f"[red]Error in thread {runner_id}[/red]")
         self.progress.log(traceback.format_exc())
         if self.show_threads:
-            self.update_thread_progress(runner_id, description=f"[{runner_id}] Error in thread, thread killed.", refresh=True, completed=True)
+            self.update_thread_progress(
+                runner_id,
+                description=f"[{runner_id}] Error in thread, thread killed.",
+                refresh=True,
+                completed=True,
+            )
 
     def update_thread_progress(self, runner_id: int, **kwargs):
         if self.show_threads:

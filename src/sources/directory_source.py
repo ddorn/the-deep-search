@@ -1,12 +1,11 @@
 import hashlib
 from pathlib import Path
 
-from pydantic import BaseModel
 from gitignore_filter import git_ignore_filter
+from pydantic import BaseModel
 
-from sources.fingerprinted_source import FingerprintedSource, DocInfo
-from core_types import AssetType, PartialAsset, PartialDocument
-from logs import logger
+from core_types import AssetType, PartialAsset
+from sources.fingerprinted_source import DocInfo, FingerprintedSource
 
 
 class DirectorySourceConfig(BaseModel):

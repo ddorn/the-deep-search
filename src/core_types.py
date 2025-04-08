@@ -57,6 +57,7 @@ class AssetType(StrEnum):
     GOOGLE_DOC = "google_doc"
     AUDIO_TO_DL = "audio_to_dl"
     AUDIO_FILE = "audio_file"
+    TRANSCRIPT = "transcript"
 
 
 class PartialAsset(BaseModel):

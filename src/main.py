@@ -4,12 +4,15 @@ import shutil
 from pathlib import Path
 
 from typer import Typer
+from dotenv import load_dotenv
 
 from config import Config, load_config
 from constants import DIRS
 from executor import Executor
 from logs import logger
 from storage import Database, set_db
+
+load_dotenv()
 
 app = Typer(no_args_is_help=True, add_completion=False)
 

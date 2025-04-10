@@ -7,7 +7,7 @@ from pathlib import Path
 
 import numpy as np
 
-from config import Config
+from config import Config, load_config
 from constants import DIRS
 from core_types import (
     Asset,
@@ -84,6 +84,13 @@ class Database:
         self.cursor.execute(
             "UPDATE tasks SET status = ? WHERE status = ?",
             (TaskStatus.PENDING, TaskStatus.IN_PROGRESS),
+        )
+        self.db.commit()
+
+    def delete_tasks(self, task_ids: list[int]):
+        self.cursor.execute(
+            "DELETE FROM tasks WHERE id IN (%s)" % ",".join("?" * len(task_ids)),
+            task_ids,
         )
         self.db.commit()
 
@@ -480,6 +487,7 @@ class Database:
             strategy TEXT NOT NULL,
             status TEXT NOT NULL,
             input_asset_id INTEGER,
+            one_shot BOOLEAN DEFAULT FALSE,
 
             FOREIGN KEY(document_id) REFERENCES documents(id) ON DELETE CASCADE,
             FOREIGN KEY(input_asset_id) REFERENCES assets(id) ON DELETE CASCADE
@@ -524,6 +532,30 @@ class Database:
             created_at TIMESTAMP NOT NULL DEFAULT (DATETIME('now', 'utc'))
         )"""
         )
+
+
+def setup_db(extra_path_for_config: Path | None = None):
+    paths_for_config = [
+        Path("config.yaml"),
+        Path(__file__).parent.parent / "data" / "config-simple.yaml",
+        # TODO: Define path where the config is searched for
+    ]
+
+    if extra_path_for_config:
+        paths_for_config.insert(0, extra_path_for_config)
+
+    for path in paths_for_config:
+        if path.exists():
+            config = load_config(path)
+            logger.info(f"Using config file: {path.resolve()}")
+            break
+    else:
+        logger.warning("No config file found, using default config.")
+        config = Config()
+
+    db = Database(DIRS.user_data_path / "db.sqlite", config=config)
+    set_db("default", db)
+    return db
 
 
 CURRENT_DATABASE: str = None

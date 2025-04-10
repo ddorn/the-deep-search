@@ -22,6 +22,7 @@ class PartialTask(BaseModel):
     document_id: int
     input_asset_id: int
     status: TaskStatus = TaskStatus.PENDING
+    one_shot: bool = False
 
 
 class Task(PartialTask, DBModel):
@@ -49,15 +50,15 @@ class Document(PartialDocument, DBModel):
 
 
 class AssetType(StrEnum):
-    CHUNK_ID = "chunk_id"
-    EMBEDDING_ID = "embedding_id"
-    GENERIC_FILE = "generic_file"
-    TEXT_FILE = "text_file"
-    SYNCED_TEXT_FILE = "synced_text_file"
     GOOGLE_DOC = "google_doc"
     AUDIO_TO_DL = "audio_to_dl"
     AUDIO_FILE = "audio_file"
     TRANSCRIPT = "transcript"
+    GENERIC_FILE = "generic_file"
+    TEXT_FILE = "text_file"
+    SYNCED_TEXT_FILE = "synced_text_file"
+    CHUNK_ID = "chunk_id"
+    EMBEDDING_ID = "embedding_id"
 
 
 class PartialAsset(BaseModel):
@@ -67,7 +68,6 @@ class PartialAsset(BaseModel):
     type: str
     content: str | None = None
     path: Path | None = None
-
 
 class Asset(PartialAsset, DBModel):
     pass

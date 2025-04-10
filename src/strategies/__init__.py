@@ -6,6 +6,7 @@ from .embed_chunks import EmbedChunksStrategy
 from .transcribe import TranscribeStrategy
 from .strategy import Module
 from .strategy import Source as Source
+from .compress_audio import CompressAudioInPlaceStrategy
 
 BUILT_IN_STRATEGIES: dict[str, type[Module]] = {
     EmbedChunksStrategy.NAME: EmbedChunksStrategy,
@@ -14,4 +15,5 @@ BUILT_IN_STRATEGIES: dict[str, type[Module]] = {
     AddSyncTokenStrategy.NAME: AddSyncTokenStrategy,
     DlAudioStrategy.NAME: DlAudioStrategy,
     TranscribeStrategy.NAME: TranscribeStrategy,
+    CompressAudioInPlaceStrategy.NAME: CompressAudioInPlaceStrategy,
 }

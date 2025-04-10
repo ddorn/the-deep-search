@@ -27,10 +27,13 @@ class Executor:
             tasks_by_strategy[task.strategy].append(task)
 
         # Pick the highest priority strategy
-        strategy = max(tasks_by_strategy.keys(), key=lambda s: self.strategies[s].PRIORITY)
+        strategy = max(tasks_by_strategy.keys(), key=self.strategy_priority)
         tasks_for_best_strategy = tasks_by_strategy[strategy]
         batch_to_run = tasks_for_best_strategy[: self.strategies[strategy].MAX_BATCH_SIZE]
         return batch_to_run
+
+    def strategy_priority(self, strategy: str) -> int:
+        return self.strategies[strategy].PRIORITY
 
     async def run_tasks(self, tasks: list[Task]) -> None:
         if not tasks:
@@ -45,7 +48,12 @@ class Executor:
         task_ids = [task.id for task in tasks]
         self.db.set_task_status(TaskStatus.IN_PROGRESS, task_ids)
         await strategy.process_all(tasks)
-        self.db.set_task_status(TaskStatus.DONE, task_ids)
+        
+        to_delete = [task.id for task in tasks if task.one_shot]
+        to_done = [task.id for task in tasks if not task.one_shot]
+
+        self.db.set_task_status(TaskStatus.DONE, to_done)
+        self.db.delete_tasks(to_delete)
 
     async def main(self):
 
@@ -105,9 +113,9 @@ class Executor:
             return
 
         # Remove modules that are not in the new config
-        for strategy_name in set(old_config.strategies) - set(new_config.strategies):
-            for doc in self.db.get_documents_from_source(strategy_name):
-                self.db.delete_document(doc.id)
+        # for strategy_name in set(old_config.strategies) - set(new_config.strategies):
+        #     for doc in self.db.get_documents_from_source(strategy_name):
+        #         self.db.delete_document(doc.id)
                 # TODO: also delete their folder
 
         # Save the new config

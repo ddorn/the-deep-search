@@ -111,18 +111,46 @@ if query:
                 #     st.code(path.read_text())
 
 
+st.header("Statistics")
+
+tabs = st.tabs(["Tasks", "Chunks"])
+
+with tabs[0]:
+    # Tasks per strategy (pending/in_progress/done)
+    db.cursor.execute(
+        """
+        SELECT COUNT(*), strategy, status
+        FROM tasks
+        GROUP BY strategy, status
+    """
+    )
+    rows = db.cursor.fetchall()
+    st.write("### Number of tasks per strategy and status")
+    
+    # {strategy: {status: count}}
+    stats = defaultdict(lambda: defaultdict(int))
+    for row in rows:
+        stats[row[1]][row[2]] += row[0]
+
+    text = ""
+    for strategy, status_counts in stats.items():
+        # - strategy (red-pending, green-done, blue-in_progress)
+        text += f"- {strategy} (:red[{status_counts['pending']}], :green[{status_counts['done']}], :blue[{status_counts['in_progress']}])\n"
+    st.markdown(text)
+
 # Show numbers of chunks per document
-db.cursor.execute(
-    """
-    SELECT COUNT(*), document_id
-    FROM chunks
-    GROUP BY document_id
-    """
-)
-rows = db.cursor.fetchall()
-st.write("### Number of chunks per document")
-stats = [{"document_id": row[1], "count": row[0]} for row in rows]
-stats.sort(key=lambda x: x["count"], reverse=True)
-for stat in stats:
-    doc = db.get_document_by_id(stat["document_id"])
-    st.markdown(f"Document {doc.source_id} ({doc.title}): {stat['count']} chunks")
+with tabs[1]:
+    db.cursor.execute(
+        """
+        SELECT COUNT(*), document_id
+        FROM chunks
+        GROUP BY document_id
+        """
+    )
+    rows = db.cursor.fetchall()
+    st.write("### Number of chunks per document")
+    stats = [{"document_id": row[1], "count": row[0]} for row in rows]
+    stats.sort(key=lambda x: x["count"], reverse=True)
+    for stat in stats:
+        doc = db.get_document_by_id(stat["document_id"])
+        st.markdown(f"Document {doc.source_id} ({doc.title}): {stat['count']} chunks")

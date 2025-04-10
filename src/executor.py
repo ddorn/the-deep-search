@@ -28,11 +28,17 @@ class Executor:
 
         # Pick the highest priority strategy
         strategy = max(tasks_by_strategy.keys(), key=self.strategy_priority)
+        if strategy in self.db.config.global_config.paused_strategies:
+            logger.debug(f"Strategy '{strategy}' is paused, skipping")
+            return []
+
         tasks_for_best_strategy = tasks_by_strategy[strategy]
         batch_to_run = tasks_for_best_strategy[: self.strategies[strategy].MAX_BATCH_SIZE]
         return batch_to_run
 
     def strategy_priority(self, strategy: str) -> int:
+        if strategy in self.db.config.global_config.paused_strategies:
+            return -9999
         return self.strategies[strategy].PRIORITY
 
     async def run_tasks(self, tasks: list[Task]) -> None:
@@ -89,6 +95,10 @@ class Executor:
                     continue
 
                 tasks_to_run = self.pick_tasks_to_run(tasks)
+                if not tasks_to_run:
+                    await asyncio.sleep(1)
+                    continue
+
                 await self.run_tasks(tasks_to_run)
 
                 await asyncio.sleep(0.3)

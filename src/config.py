@@ -8,6 +8,7 @@ from yaml import safe_load
 
 class GlobalConfig(BaseModel):
     embedding_dimension: int = 1536
+    paused_strategies: list[str] = []
 
 
 class SourceConfig(BaseModel):

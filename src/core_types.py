@@ -69,6 +69,7 @@ class PartialAsset(BaseModel):
     content: str | None = None
     path: Path | None = None
 
+
 class Asset(PartialAsset, DBModel):
     pass
 

@@ -48,7 +48,7 @@ class Executor:
         task_ids = [task.id for task in tasks]
         self.db.set_task_status(TaskStatus.IN_PROGRESS, task_ids)
         await strategy.process_all(tasks)
-        
+
         to_delete = [task.id for task in tasks if task.one_shot]
         to_done = [task.id for task in tasks if not task.one_shot]
 
@@ -116,7 +116,7 @@ class Executor:
         # for strategy_name in set(old_config.strategies) - set(new_config.strategies):
         #     for doc in self.db.get_documents_from_source(strategy_name):
         #         self.db.delete_document(doc.id)
-                # TODO: also delete their folder
+        # TODO: also delete their folder
 
         # Save the new config
         self.db.save_config(new_config)

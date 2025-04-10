@@ -1,15 +1,16 @@
 import asyncio
 import json
 import os
-from pathlib import Path
 import tempfile
+from pathlib import Path
+
 import openai
 from pydantic import BaseModel
 
 from core_types import Asset, AssetType, PartialAsset, Task
+from logs import logger
 from storage import get_db
 from strategies.strategy import Module
-from logs import logger
 
 
 class Segment(BaseModel):
@@ -47,7 +48,6 @@ class TranscribeStrategy(Module[TranscribeStrategyConfig]):
 
         for task, asset in zip(tasks, assets):
             await self.process_one(task, asset)
-
 
     async def process_one(self, task: Task, asset: Asset):
 
@@ -104,7 +104,7 @@ class TranscribeStrategy(Module[TranscribeStrategyConfig]):
             # Find a good time to switch to the next chunk
             # Take all the segments that start after the current time until the switchpoint
             segments_past_current_time = [s for s in transcript.segments if s.start >= current_time]
-            
+
             if i == len(transcripts) - 1:
                 segments.extend(segments_past_current_time)
             else:
@@ -124,25 +124,43 @@ class TranscribeStrategy(Module[TranscribeStrategyConfig]):
     async def get_audio_duration(self, audio_file: Path) -> float:
         # ffprobe -v error -select_streams a:0 -show_entries stream=duration -of default=noprint_wrappers=1:nokey=1 input.mp3
         result = await asyncio.create_subprocess_exec(
-            "ffprobe", "-v", "error", "-select_streams", "a:0", "-show_entries", "stream=duration", "-of", "default=noprint_wrappers=1:nokey=1", audio_file,
+            "ffprobe",
+            "-v",
+            "error",
+            "-select_streams",
+            "a:0",
+            "-show_entries",
+            "stream=duration",
+            "-of",
+            "default=noprint_wrappers=1:nokey=1",
+            audio_file,
             stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE
+            stderr=asyncio.subprocess.PIPE,
         )
-       
+
         # Read the duration from the output
         if await result.wait() != 0:
             raise Exception(f"Failed to get audio duration for {audio_file}")
 
         stdout, _ = await result.communicate()
         duration = stdout.decode("utf-8").strip()
-        
+
         return float(duration)
 
     async def split_audio(self, audio_file: Path, output: Path, start: int, end: int):
         result = await asyncio.create_subprocess_exec(
-            "ffmpeg", "-i", audio_file, "-ss", str(start), "-to", str(end), "-c", "copy", output,
+            "ffmpeg",
+            "-i",
+            audio_file,
+            "-ss",
+            str(start),
+            "-to",
+            str(end),
+            "-c",
+            "copy",
+            output,
             stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE
+            stderr=asyncio.subprocess.PIPE,
         )
         if await result.wait() != 0:
             stdout, _ = await result.communicate()
@@ -156,15 +174,16 @@ class TranscribeStrategy(Module[TranscribeStrategyConfig]):
                 model=self.config.model,
                 response_format="verbose_json",
             )
-        
-        return Transcript(segments=[Segment(
-            text=s.text,
-            start=s.start + start,
-            end=s.end + start) for s in transcript.segments])
+
+        return Transcript(
+            segments=[
+                Segment(text=s.text, start=s.start + start, end=s.end + start)
+                for s in transcript.segments
+            ]
+        )
 
     def find_switchpoint(self, segments: list[Segment], next_segments: list[Segment]) -> int:
         # We search for the start in next_segments that is closest to the end of the last segment in segments
-
 
         distances = {
             (i_first, i_second): abs(first.end - second.start)
@@ -179,22 +198,23 @@ class TranscribeStrategy(Module[TranscribeStrategyConfig]):
         if distance > 2:
             logger.debug(segments)
             logger.debug(next_segments)
-            logger.warning(f"Switchpoint distance is large: {segments[first]} -> {segments[second]} ({distance}s)")
+            logger.warning(
+                f"Switchpoint distance is large: {segments[first]} -> {segments[second]} ({distance}s)"
+            )
 
         return next_segments[second].start
-        
+
     def import_if_exists(self, task: Task):
         try:
             pairs = json.loads(Path("src/pairs.json").read_text())
-        except FileNotFoundError as e:
+        except FileNotFoundError:
             return False
 
         if str(task.document_id) not in pairs:
             return False
 
         original_path = Path(pairs[str(task.document_id)]).with_suffix(".json")
-        target_path = self.path_for_asset("transcript",
-                                          f"{task.document_id}.json")
+        target_path = self.path_for_asset("transcript", f"{task.document_id}.json")
 
         try:
             original = json.loads(original_path.read_text())
@@ -203,11 +223,15 @@ class TranscribeStrategy(Module[TranscribeStrategyConfig]):
             print(original_path)
             return False
 
-        paragraphs = original['results']['channels'][0]['alternatives'][0]['paragraphs']['paragraphs']
+        paragraphs = original["results"]["channels"][0]["alternatives"][0]["paragraphs"][
+            "paragraphs"
+        ]
         segments = []
         for p in paragraphs:
-            for sentence in p['sentences']:
-                segments.append(dict(text=sentence['text'], start=sentence['start'], end=sentence['end']))
+            for sentence in p["sentences"]:
+                segments.append(
+                    dict(text=sentence["text"], start=sentence["start"], end=sentence["end"])
+                )
 
         transcript = dict(segments=segments)
         target_path.write_text(json.dumps(transcript))
@@ -221,6 +245,7 @@ class TranscribeStrategy(Module[TranscribeStrategyConfig]):
                 created_by_task_id=task.id,
                 type=AssetType.TRANSCRIPT,
                 path=target_path,
-            ))
+            )
+        )
 
         return True

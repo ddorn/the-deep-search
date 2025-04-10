@@ -126,7 +126,7 @@ with tabs[0]:
     )
     rows = db.cursor.fetchall()
     st.write("### Number of tasks per strategy and status")
-    
+
     # {strategy: {status: count}}
     stats = defaultdict(lambda: defaultdict(int))
     for row in rows:

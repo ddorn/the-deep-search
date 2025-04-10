@@ -63,6 +63,9 @@ class Executor:
 
     async def main(self):
 
+        # Clean the database
+        self.db.clean_database()
+
         # Delete entries that are not in the new config
         self.apply_config_changes(self.db.config)
 
@@ -101,7 +104,7 @@ class Executor:
 
                 await self.run_tasks(tasks_to_run)
 
-                await asyncio.sleep(0.3)
+                await asyncio.sleep(0.1)
 
     @contextmanager
     def mount_all(self):

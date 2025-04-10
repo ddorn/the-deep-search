@@ -66,6 +66,13 @@ class Database:
 
         return cur.lastrowid
 
+    def get_tasks(self, task_ids: list[int]) -> list[Task]:
+        rows = self.cursor.execute(
+            "SELECT * FROM tasks WHERE id IN (%s)" % ",".join("?" * len(task_ids)),
+            task_ids,
+        ).fetchall()
+        return [Task(**row) for row in rows]
+
     def get_pending_tasks(self) -> list[Task]:
         tasks = self.cursor.execute(
             "SELECT * FROM tasks WHERE status = ?",
@@ -81,6 +88,28 @@ class Database:
         self.db.commit()
 
     def restart_crashed_tasks(self):
+        # Get all tasks that are in progress
+        tasks = self.cursor.execute(
+            "SELECT id FROM tasks WHERE status = ?",
+            (TaskStatus.IN_PROGRESS,),
+        ).fetchall()
+
+        # Delete all downstream tasks and assets, which might have been created
+        tasks_to_delete, assets_created = self.get_downstream_tasks_and_assets(
+            [task["id"] for task in tasks]
+        )
+        self._delete_assets_and_what_they_point_to(
+            "id IN (%s)" % ",".join("?" * len(assets_created)),
+            [asset.id for asset in assets_created],
+        )
+
+        # Delete the tasks
+        self.cursor.execute(
+            "DELETE FROM tasks WHERE id IN (%s)" % ",".join("?" * len(tasks_to_delete)),
+            [task.id for task in tasks_to_delete],
+        )
+
+        # Restart the tasks
         self.cursor.execute(
             "UPDATE tasks SET status = ? WHERE status = ?",
             (TaskStatus.PENDING, TaskStatus.IN_PROGRESS),
@@ -357,36 +386,31 @@ class Database:
 
     # -- Strategies --
 
-    def rerun_strategy(self, strategy: str):
+    def rerun_strategy(self, strategy: str, doc_ids: list[int] = []):
         # We need to:
         # - reset to PENDING all tasks from this strategy
         # - Delete all tasks that come after
         # - Delete all assets made by this strategy and further tasks
+
+        if doc_ids:
+            where = "strategy = ? AND document_id IN (%s)" % ",".join("?" * len(doc_ids))
+            args = [strategy] + doc_ids
+        else:
+            where = "strategy = ?"
+            args = [strategy]
+
         tasks_to_rerun = self.cursor.execute(
-            "SELECT id, strategy FROM tasks WHERE strategy = ?", (strategy,)
+            f"SELECT id FROM tasks WHERE {where}",
+            args,
         ).fetchall()
 
-        assets_created = []
-        tasks_to_delete = []
-        last_tasks = tasks_to_rerun
-        while last_tasks:
-            new_assets = self.cursor.execute(
-                "SELECT * FROM assets WHERE created_by_task_id IN (%s)"
-                % ",".join("?" * len(last_tasks)),
-                [task["id"] for task in last_tasks],
-            ).fetchall()
-            assets_created.extend(new_assets)
-
-            last_tasks = self.cursor.execute(
-                "SELECT id, strategy FROM tasks WHERE input_asset_id IN (%s)"
-                % ",".join("?" * len(new_assets)),
-                [asset["id"] for asset in new_assets],
-            ).fetchall()
-            tasks_to_delete.extend(last_tasks)
+        tasks_to_delete, assets_created = self.get_downstream_tasks_and_assets(
+            [task["id"] for task in tasks_to_rerun]
+        )
 
         # Print a nice summary: nb of task per strategy, nb of assets per type, nb of tasks reset
-        tasks_counter = Counter(task["strategy"] for task in tasks_to_delete)
-        assets_counter = Counter(asset["type"] for asset in assets_created)
+        tasks_counter = Counter(task.strategy for task in tasks_to_delete)
+        assets_counter = Counter(asset.type for asset in assets_created)
         logger.info(f"Rerunning strategy '{strategy}'")
         logger.info(f"  - {len(tasks_to_rerun)} tasks to reset")
         for strat, count in tasks_counter.items():
@@ -394,24 +418,79 @@ class Database:
         for asset_type, count in assets_counter.items():
             logger.info(f"  - {count} assets of type '{asset_type}' created")
 
-        if input("Are you sure you want to continue? (y/n)") != "y":
+        if input("Are you sure you want to continue? (y/n): ") != "y":
             logger.info("Aborting...")
             return
 
         # We delete assets that were created by any of the tasks
         self._delete_assets_and_what_they_point_to(
             "id IN (%s)" % ",".join("?" * len(assets_created)),
-            [asset["id"] for asset in assets_created],
+            [asset.id for asset in assets_created],
         )
         self.cursor.execute(
             "DELETE FROM tasks WHERE id IN (%s)" % ",".join("?" * len(tasks_to_delete)),
-            [task["id"] for task in tasks_to_delete],
+            [task.id for task in tasks_to_delete],
         )
         self.db.commit()
         self.cursor.execute(
             "UPDATE tasks SET status = ? WHERE strategy = ?", [TaskStatus.PENDING, strategy]
         )
         self.db.commit()
+
+    def get_downstream_tasks_and_assets(
+        self, task_ids: list[int]
+    ) -> tuple[list[Task], list[Asset]]:
+        downstream_assets = []
+        downstream_tasks = []
+        last_tasks = task_ids
+        while last_tasks:
+            new_assets = self.cursor.execute(
+                "SELECT id FROM assets WHERE created_by_task_id IN (%s)"
+                % ",".join("?" * len(last_tasks)),
+                last_tasks,
+            ).fetchall()
+            downstream_assets.extend([asset["id"] for asset in new_assets])
+
+            new_tasks = self.cursor.execute(
+                "SELECT id FROM tasks WHERE input_asset_id IN (%s)"
+                % ",".join("?" * len(new_assets)),
+                [asset["id"] for asset in new_assets],
+            ).fetchall()
+            last_tasks = [task["id"] for task in new_tasks]
+            downstream_tasks.extend(last_tasks)
+
+        return self.get_tasks(downstream_tasks), self.get_assets(downstream_assets)
+
+    # -- Maintenance --
+
+    def clean_database(self):
+        """
+        Run a series of checks and fixes on the database.
+        This prompts the user for confirmation before cleaning.
+        """
+
+        # Check for orphaned chunks
+        self.cursor.execute(
+            """
+            SELECT id FROM chunks WHERE id NOT IN (
+                SELECT DISTINCT CAST(content AS INTEGER) as chunk_id 
+                FROM assets 
+                WHERE type = 'chunk_id'
+            )
+        """
+        )
+        orphaned_chunks = self.cursor.fetchall()
+        if orphaned_chunks:
+            print(
+                f"Found {len(orphaned_chunks)} orphaned chunks: {[chunk['id'] for chunk in orphaned_chunks]}"
+            )
+            if input("Delete them? (y/n): ") == "y":
+                self.cursor.execute(
+                    "DELETE FROM chunks WHERE id IN (%s)" % ",".join("?" * len(orphaned_chunks)),
+                    [chunk.id for chunk in orphaned_chunks],
+                )
+                self.db.commit()
+                print("Deleted orphaned chunks")
 
     # -- Config --
 
@@ -489,6 +568,7 @@ class Database:
             input_asset_id INTEGER,
             one_shot BOOLEAN DEFAULT FALSE,
 
+            UNIQUE(input_asset_id, strategy),
             FOREIGN KEY(document_id) REFERENCES documents(id) ON DELETE CASCADE,
             FOREIGN KEY(input_asset_id) REFERENCES assets(id) ON DELETE CASCADE
         )"""

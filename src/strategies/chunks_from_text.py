@@ -1,6 +1,8 @@
 # %%
 import re
+import sqlite3
 from pathlib import Path
+from pprint import pprint
 
 from pydantic import BaseModel
 
@@ -19,7 +21,7 @@ class ChunkFromTextConfig(BaseModel):
 class ChunkFromTextStrategy(Module[ChunkFromTextConfig]):
     NAME = "chunk_from_text"
     PRIORITY = 0
-    MAX_BATCH_SIZE = 10
+    MAX_BATCH_SIZE = 1
     INPUT_ASSET_TYPE = AssetType.SYNCED_TEXT_FILE
 
     CONFIG_TYPE = ChunkFromTextConfig
@@ -38,26 +40,35 @@ class ChunkFromTextStrategy(Module[ChunkFromTextConfig]):
             text = path.read_text()
             chunks = self.chunk_text(text)
 
-            ids = db.create_chunks(
-                [
-                    PartialChunk(
-                        document_id=asset.document_id,
-                        document_order=i,
-                        content=chunk,
-                    )
-                    for i, chunk in enumerate(chunks)
-                ]
-            )
+            try:
+                ids = db.create_chunks(
+                    [
+                        PartialChunk(
+                            document_id=task.document_id,
+                            document_order=i,
+                            content=chunk,
+                        )
+                        for i, chunk in enumerate(chunks)
+                    ],
+                    commit=False,
+                )
+            except sqlite3.IntegrityError:
+                pprint(asset)
+                pprint(task)
+                raise
 
             for chunk_id in ids:
                 db.create_asset(
                     PartialAsset(
-                        document_id=asset.document_id,
+                        document_id=task.document_id,
                         created_by_task_id=task.id,
                         type=AssetType.CHUNK_ID,
                         content=str(chunk_id),
-                    )
+                    ),
+                    commit=False,
                 )
+
+            db.db.commit()
 
     def chunk_text(self, text: str) -> list[str]:
         # We want chunks of self.config.chars_per_chunk ± 20%
@@ -128,12 +139,12 @@ def find_best_split(text: str) -> int:
         return best_split
 
     # Find a sentence end
-    match = re.search(r"[.!?]\s*", text)
+    match = re.search(r"[.!?]\s+", text)
     if match:
-        return match.end()
+        return match.start() + 1
 
     # Find a space
-    if (space := text.find(" ")) > 0:
+    if (space := text.find(" ")) != -1:
         return space + 1
 
     # Split after a sync token
@@ -142,9 +153,9 @@ def find_best_split(text: str) -> int:
 
     # There are no sync tokens in the center, but some might be cut at the edges
     # So we do after a '>' or before a '<'
-    if (gt := text.rfind(">")) > 0:
+    if (gt := text.rfind(">")) != -1:
         return gt + 1
-    if (lt := text.find("<")) > 0:
+    if (lt := text.find("<")) != -1:
         return lt
 
     # No sync tokens, and no other split point, just cut the text

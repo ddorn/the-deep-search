@@ -3,7 +3,9 @@ import asyncio
 import os
 import shutil
 from pathlib import Path
+from typing import Annotated
 
+import typer
 from dotenv import load_dotenv
 from typer import Typer
 
@@ -30,7 +32,16 @@ def main(config: Path = None, fresh: bool = False, no_sync: bool = False):
 
 
 @app.command()
-def rerun_strategy(strategy: str, config: Path = None):
+def rerun_strategy(
+    strategy: str,
+    doc_ids: Annotated[
+        str,
+        typer.Option(
+            help="Document IDs to rerun the strategy on. Default is all. Space separated."
+        ),
+    ] = "",
+    config: Path = None,
+):
     """Rerun the specified strategy."""
 
     db = setup_db(extra_path_for_config=config)
@@ -44,7 +55,8 @@ def rerun_strategy(strategy: str, config: Path = None):
         logger.error(f"Strategy '{strategy}' not found in the database.")
         return
 
-    db.rerun_strategy(strategy)
+    doc_ids = [int(id) for id in doc_ids.split()]
+    db.rerun_strategy(strategy, doc_ids)
 
 
 @app.command()

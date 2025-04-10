@@ -10,3 +10,5 @@ wheels/
 .venv
 .envrc
 .env
+src/import.ipynb
+src/pairs.json

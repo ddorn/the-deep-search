@@ -35,6 +35,9 @@ asyncio_mode = "auto"
 [tool.black]
 line-length = 100
 
+[tool.isort]
+profile = "black"
+
 [dependency-groups]
 dev = [
     "pytest>=8.3.5",

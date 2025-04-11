@@ -9,7 +9,7 @@ from strategies.strategy import Module
 class TranscriptToSyncedTextStrategy(Module):
     NAME = "transcript_to_synced_text"
     PRIORITY = 0
-    MAX_BATCH_SIZE = 10
+    MAX_BATCH_SIZE = 1
 
     INPUT_ASSET_TYPE = AssetType.TRANSCRIPT
 

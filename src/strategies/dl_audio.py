@@ -20,6 +20,7 @@ class DlAudioStrategy(Module[DlAudioConfig]):
     PRIORITY = 0
     MAX_BATCH_SIZE = 1
     INPUT_ASSET_TYPE = AssetType.AUDIO_TO_DL
+    CONFIG_TYPE = DlAudioConfig
 
     async def process_all(self, tasks: list[Task]):
         db = get_db()

@@ -51,7 +51,7 @@ class Module[ConfigType: BaseModel](abc.ABC):
             return rules
         else:
             return rules + [
-                Rule(pattern=self.INPUT_ASSET_TYPE, strategy=self.NAME),
+                Rule(source=self.INPUT_ASSET_TYPE, strategy=self.NAME),
             ]
 
     def data_folder_name(self) -> str:

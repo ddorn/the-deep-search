@@ -85,7 +85,7 @@ class Rule(BaseModel):
         if self.asset_type is not None and re.match(self.asset_type, asset.type) is None:
             return False
 
-        if self.source is not None and document.source_id != self.source:
+        if self.source is not None and re.match(self.source, document.source_id) is None:
             return False
 
         return True

@@ -61,6 +61,7 @@ class AssetType(StrEnum):
     SYNCED_TEXT_FILE = "synced_text_file"
     CHUNK_ID = "chunk_id"
     EMBEDDING_ID = "embedding_id"
+    STRUCTURE = "structure"
 
 
 class PartialAsset(BaseModel):

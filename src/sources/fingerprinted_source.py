@@ -67,6 +67,7 @@ class FingerprintedSource[ConfigType: BaseModel](Source[ConfigType]):
         db.create_asset(self.mk_asset(document_id, doc))
 
         self.save_fingerprint(doc.urn, doc.fingerprint)
+        db.commit()
 
     @abc.abstractmethod
     def mk_asset(self, document_id: int, doc: DocInfo) -> PartialAsset:

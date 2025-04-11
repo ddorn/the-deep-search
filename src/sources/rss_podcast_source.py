@@ -1,3 +1,6 @@
+import datetime
+import time
+
 import feedparser
 from pydantic import BaseModel
 
@@ -8,6 +11,7 @@ from sources.fingerprinted_source import DocInfo, FingerprintedSource
 
 class RssPodcastConfig(BaseModel):
     feed: str
+    after: datetime.datetime | None
 
 
 class RssPodcastSource(FingerprintedSource[RssPodcastConfig]):
@@ -18,6 +22,10 @@ class RssPodcastSource(FingerprintedSource[RssPodcastConfig]):
         feed = feedparser.parse(self.config.feed)
 
         for entry in feed.entries:
+            entry_time = datetime.datetime.fromtimestamp(time.mktime(entry.published_parsed))
+            if self.config.after and entry_time < self.config.after:
+                continue
+
             yield DocInfo(
                 urn=entry.id,
                 title=entry.title,

@@ -4,6 +4,7 @@ from pathlib import Path
 from pydantic import BaseModel
 
 from core_types import Rule, Task
+from logs import logger
 from storage import get_db
 from strategies.strategy import Module
 
@@ -47,7 +48,6 @@ class CompressAudioInPlaceStrategy(Module[CompressAudioInPlaceConfig]):
             str(output_path),
         ]
 
-        print(f"Compressing {path.name}...")
         try:
             process = await asyncio.create_subprocess_exec(
                 *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
@@ -57,11 +57,11 @@ class CompressAudioInPlaceStrategy(Module[CompressAudioInPlaceConfig]):
             if process.returncode == 0:
                 # Replace original with compressed version
                 output_path.replace(path)
-                print("Replaced original file with compressed version")
+                logger.info("Replaced original file with compressed version")
             else:
-                print(f"Error compressing {path.name}:")
-                print(f"Return code: {process.returncode}")
-                print(f"Error output: {stderr.decode()}")
+                logger.error(f"Error compressing {path.name}:")
+                logger.error(f"Return code: {process.returncode}")
+                logger.error(f"Error output: {stderr.decode()}")
         except Exception as e:
-            print(f"Error compressing {path.name}: {str(e)}")
+            logger.error(f"Error compressing {path.name}: {str(e)}")
             raise e

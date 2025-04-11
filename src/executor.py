@@ -83,9 +83,11 @@ class Executor:
             self.rules = self.strategies[name].add_rules(self.rules)
 
         self.db.restart_crashed_tasks()
+        self.db.commit()
 
         # Mount all sources & strategies
         with self.mount_all():
+            self.db.commit()
 
             # Run the main loop
             while True:

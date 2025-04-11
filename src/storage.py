@@ -44,12 +44,12 @@ class Database:
         ids: list[int],
         type_: type[T],
     ) -> list[T]:
-        if len(results) != len(ids):
-            missing_ids = set(ids) - {row["id"] for row in results}
-            raise ValueError(f"Missing {type_.__name__} for ids: {missing_ids}")
-
         object_dict = {row["id"]: type_(**row) for row in results}
-        return [object_dict[object_id] for object_id in ids]
+
+        try:
+            return [object_dict[object_id] for object_id in ids]
+        except KeyError as e:
+            raise ValueError(f"Missing {type_.__name__} for ids: {e}")
 
     # -- Tasks --
 

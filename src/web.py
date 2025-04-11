@@ -1,7 +1,9 @@
 import asyncio
+import json
 from collections import defaultdict
 
 import streamlit as st
+import streamlit.components.v1 as components
 from anyio import Path
 from millify import millify
 
@@ -16,6 +18,11 @@ st.set_page_config(
     page_icon=":mag_right:",
     layout="wide",
     initial_sidebar_state="collapsed",
+)
+
+syncid_linker = components.declare_component(
+    "syncid_linker",
+    path="src/streamlit-components/syncid-linker/syncid_linker/frontend/build",
 )
 
 with st.sidebar:
@@ -113,7 +120,15 @@ if query:
         assets_of_type = doc_assets[type_]
 
         for asset in assets_of_type:
-            if asset.path is not None:
+            if asset.type == AssetType.SYNCED_TEXT_FILE:
+                st.markdown(f"### {asset.path}")
+                syncid_linker(markdown=asset.path.read_text())
+
+            elif asset.type == AssetType.STRUCTURE:
+                st.markdown(f"### {asset.path}")
+                st.json(json.loads(asset.path.read_text()))
+
+            elif asset.path is not None:
                 # For .md and .txt files, we can use .markdown, for others we can use .code
                 if asset.path.suffix in [".md", ".txt"]:
                     st.markdown(f"### {asset.path}")
@@ -121,6 +136,7 @@ if query:
                 else:
                     st.markdown(f"### {asset.path}")
                     st.code(asset.path.read_text())
+
             elif asset.type == AssetType.CHUNK_ID:
                 chunk = db.get_chunks([int(asset.content)])[0]
                 st.markdown(f"#### Chunk {chunk.document_order}")

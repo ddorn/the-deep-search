@@ -57,6 +57,7 @@ def rerun_strategy(
 
     doc_ids = [int(id) for id in doc_ids.split()]
     db.rerun_strategy(strategy, doc_ids)
+    db.commit()
 
 
 @app.command()
@@ -69,9 +70,7 @@ def reprocess_doc(doc_id: int):
 def delete_all_data():
     shutil.rmtree(DIRS.user_data_path)
     shutil.rmtree(DIRS.user_cache_path)
-    logger.warning(
-        f"Deleted all data in {DIRS.user_data_path} and {DIRS.user_cache_path}"
-    )
+    logger.warning(f"Deleted all data in {DIRS.user_data_path} and {DIRS.user_cache_path}")
 
 
 @app.command()

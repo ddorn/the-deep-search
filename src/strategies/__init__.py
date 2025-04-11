@@ -2,6 +2,7 @@ from .add_sync_tokens import AddSyncTokenStrategy
 from .auto_process import AutoProcessStrategy
 from .chunks_from_text import ChunkFromTextStrategy
 from .compress_audio import CompressAudioInPlaceStrategy
+from .create_structure import CreateStructureStrategy
 from .dl_audio import DlAudioStrategy
 from .embed_chunks import EmbedChunksStrategy
 from .strategy import Module
@@ -18,4 +19,5 @@ BUILT_IN_STRATEGIES: dict[str, type[Module]] = {
     DlAudioStrategy.NAME: DlAudioStrategy,
     TranscribeStrategy.NAME: TranscribeStrategy,
     CompressAudioInPlaceStrategy.NAME: CompressAudioInPlaceStrategy,
+    CreateStructureStrategy.NAME: CreateStructureStrategy,
 }

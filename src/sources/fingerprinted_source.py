@@ -62,7 +62,7 @@ class FingerprintedSource[ConfigType: BaseModel](Source[ConfigType]):
         db = get_db()
 
         document_id = db.create_document(
-            PartialDocument(source_urn=doc.urn, source_id=self.title, title=doc.title), commit=False
+            PartialDocument(source_urn=doc.urn, source_id=self.title, title=doc.title)
         )
         db.create_asset(self.mk_asset(document_id, doc))
 

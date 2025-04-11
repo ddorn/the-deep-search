@@ -35,6 +35,9 @@ class Database:
         self.cursor = self.db.cursor()
         self.migrate()
 
+    def commit(self):
+        self.db.commit()
+
     def _make_ordered_list_from_results[T](
         self,
         results: list[dict],
@@ -50,7 +53,7 @@ class Database:
 
     # -- Tasks --
 
-    def create_task(self, task: PartialTask, commit=True):
+    def create_task(self, task: PartialTask):
         cur = self.cursor.execute(
             "INSERT INTO tasks (strategy, document_id, input_asset_id, status) VALUES (?, ?, ?, ?)",
             (
@@ -60,9 +63,6 @@ class Database:
                 task.status,
             ),
         )
-
-        if commit:
-            self.db.commit()
 
         return cur.lastrowid
 
@@ -85,7 +85,6 @@ class Database:
             "UPDATE tasks SET status = ? WHERE id IN (%s)" % ",".join("?" * len(task_ids)),
             [status] + task_ids,
         )
-        self.db.commit()
 
     def restart_crashed_tasks(self):
         # Get all tasks that are in progress
@@ -114,25 +113,20 @@ class Database:
             "UPDATE tasks SET status = ? WHERE status = ?",
             (TaskStatus.PENDING, TaskStatus.IN_PROGRESS),
         )
-        self.db.commit()
 
     def delete_tasks(self, task_ids: list[int]):
         self.cursor.execute(
             "DELETE FROM tasks WHERE id IN (%s)" % ",".join("?" * len(task_ids)),
             task_ids,
         )
-        self.db.commit()
 
     # -- Documents --
 
-    def create_document(self, doc: PartialDocument, commit=True):
+    def create_document(self, doc: PartialDocument):
         cur = self.cursor.execute(
             "INSERT INTO documents (source_urn, source_id, title, url) VALUES (?, ?, ?, ?)",
             (doc.source_urn, doc.source_id, doc.title, doc.url),
         )
-
-        if commit:
-            self.db.commit()
 
         return cur.lastrowid
 
@@ -187,11 +181,9 @@ class Database:
             document_ids,
         )
 
-        self.db.commit()
-
     # -- Assets --
 
-    def create_asset(self, asset: PartialAsset, commit=True) -> int:
+    def create_asset(self, asset: PartialAsset) -> int:
         cur = self.cursor.execute(
             "INSERT INTO assets (document_id, created_by_task_id, next_steps_created, type, content, path) VALUES (?, ?, ?, ?, ?, ?)",
             (
@@ -203,9 +195,6 @@ class Database:
                 str(asset.path) if asset.path else None,
             ),
         )
-
-        if commit:
-            self.db.commit()
 
         return cur.lastrowid
 
@@ -242,7 +231,6 @@ class Database:
             "UPDATE assets SET next_steps_created = TRUE WHERE id = ?",
             (asset_id,),
         )
-        self.db.commit()
 
     def _delete_assets_and_what_they_point_to(self, where: str, args: list):
         """
@@ -295,7 +283,6 @@ class Database:
             f"DELETE FROM assets WHERE {where}",
             args,
         )
-        self.db.commit()
 
     # -- Chunks --
 
@@ -307,7 +294,7 @@ class Database:
 
         return self._make_ordered_list_from_results(chunks, chunk_ids, Chunk)
 
-    def create_chunks(self, chunks: list[PartialChunk], commit=True) -> list[int]:
+    def create_chunks(self, chunks: list[PartialChunk]) -> list[int]:
         new_ids = []
         for chunk in chunks:
             cur = self.cursor.execute(
@@ -316,8 +303,6 @@ class Database:
             )
             new_ids.append(cur.lastrowid)
 
-        if commit:
-            self.db.commit()
         return new_ids
 
     def get_chunks_by_document_id(self, document_id: int) -> list[Chunk]:
@@ -439,12 +424,10 @@ class Database:
             "DELETE FROM tasks WHERE id IN (%s)" % ",".join("?" * len(tasks_to_delete)),
             [task.id for task in tasks_to_delete],
         )
-        self.db.commit()
         self.cursor.execute(
             "UPDATE tasks SET status = ? WHERE strategy = ?",
             [TaskStatus.PENDING, strategy],
         )
-        self.db.commit()
 
     def get_downstream_tasks_and_assets(
         self, task_ids: list[int]
@@ -508,7 +491,6 @@ class Database:
             "INSERT INTO config (config) VALUES (?)",
             (config.model_dump_json(),),
         )
-        self.db.commit()
 
     def get_last_config(self) -> Config | None:
         row = self.cursor.execute(
@@ -528,7 +510,6 @@ class Database:
     def migrate(self):
         migrations = [
             self.migrate_0_to_1,
-            self.migrate_1_to_2,
         ]
 
         if self.version == len(migrations):
@@ -562,6 +543,7 @@ class Database:
             source_urn TEXT,
             source_id TEXT,
             title TEXT,
+            url TEXT,
             created_at TIMESTAMP NOT NULL DEFAULT (DATETIME('now', 'utc')),
             UNIQUE(source_urn, source_id)
         )"""
@@ -624,11 +606,6 @@ class Database:
             created_at TIMESTAMP NOT NULL DEFAULT (DATETIME('now', 'utc'))
         )"""
         )
-
-    def migrate_1_to_2(self):
-        """Migration to add url column to documents table."""
-        self.cursor.execute("ALTER TABLE documents ADD COLUMN url TEXT")
-        self.db.commit()
 
 
 def setup_db(extra_path_for_config: Path | None = None):

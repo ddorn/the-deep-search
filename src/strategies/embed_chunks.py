@@ -33,8 +33,7 @@ class EmbedChunksStrategy(Module):
                     created_by_task_id=task.id,
                     type=AssetType.EMBEDDING_ID,
                     content=str(chunk.id),
-                ),
-                commit=False,
+                )
             )
 
         db.update_embeddings([chunk.id for chunk in chunks], embeddings)

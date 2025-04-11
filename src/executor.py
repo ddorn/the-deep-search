@@ -102,6 +102,7 @@ class Executor:
                     continue
 
                 await self.run_tasks(tasks_to_run)
+                self.db.commit()
 
                 await asyncio.sleep(0.1)
 
@@ -148,8 +149,7 @@ class Executor:
                             document_id=asset.document_id,
                             input_asset_id=asset.id,
                             status=TaskStatus.PENDING,
-                        ),
-                        commit=False,
+                        )
                     )
 
             db.set_asset_next_steps_created(asset.id)

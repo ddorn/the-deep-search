@@ -96,9 +96,17 @@ if query:
     with doc_col:
         chunk = chunks[selected_chunk]
         doc_assets = assets[chunk.document_id]
+        doc = documents[chunk.document_id]
 
         # sync_ids = SYNC_PATTERN.findall(chunk.content)
         # st.write(sync_ids)
+        if doc.url is not None:
+            st.link_button(
+                label="Open",
+                url=doc.url,
+                type="secondary",
+                icon=":material/open_in_new:",
+            )
 
         # pick the type to display
         type_ = st.radio("Type to show", list(doc_assets.keys()), index=0, horizontal=True)
@@ -120,14 +128,6 @@ if query:
             else:
                 st.markdown(f"### Asset {asset.id}")
                 st.code(asset.content)
-
-            if asset.url is not None:
-                st.link_button(
-                    label="Open",
-                    url=asset.url,
-                    type="secondary",
-                    icon=":material/open_in_new:",
-                )
 
                 # path = asset.path
                 # st.markdown(f"### {path}")

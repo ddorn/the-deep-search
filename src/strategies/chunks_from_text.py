@@ -50,7 +50,6 @@ class ChunkFromTextStrategy(Module[ChunkFromTextConfig]):
                         )
                         for i, chunk in enumerate(chunks)
                     ],
-                    commit=False,
                 )
             except sqlite3.IntegrityError:
                 pprint(asset)
@@ -64,11 +63,8 @@ class ChunkFromTextStrategy(Module[ChunkFromTextConfig]):
                         created_by_task_id=task.id,
                         type=AssetType.CHUNK_ID,
                         content=str(chunk_id),
-                    ),
-                    commit=False,
+                    )
                 )
-
-            db.db.commit()
 
     def chunk_text(self, text: str) -> list[str]:
         # We want chunks of self.config.chars_per_chunk ± 20%

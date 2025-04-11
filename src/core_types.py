@@ -1,4 +1,5 @@
 import datetime
+import re
 from enum import StrEnum
 from pathlib import Path
 from typing import Annotated
@@ -43,6 +44,7 @@ class PartialDocument(BaseModel):
     source_urn: str
     source_id: str
     title: str
+    url: str | None = None
 
 
 class Document(PartialDocument, DBModel):
@@ -75,5 +77,15 @@ class Asset(PartialAsset, DBModel):
 
 
 class Rule(BaseModel):
-    pattern: str
     strategy: str
+    asset_type: str | None = None
+    source: str | None = None
+
+    def matches(self, asset: Asset, document: Document) -> bool:
+        if self.asset_type is not None and re.match(self.asset_type, asset.type) is None:
+            return False
+
+        if self.source is not None and document.source_id != self.source:
+            return False
+
+        return True

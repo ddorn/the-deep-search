@@ -3,9 +3,10 @@ from collections import defaultdict
 
 import streamlit as st
 from anyio import Path
+from millify import millify
 
 from config import load_config
-from constants import DIRS
+from constants import DIRS, SYNC_PATTERN
 from core_types import Asset, AssetType
 from storage import DATABASES, Database, get_db, set_db
 from strategies.embed_chunks import EmbedChunksStrategy
@@ -39,6 +40,15 @@ def embed(text: str):
     return embedding
 
 
+text = st.text_area("Document", "no text")
+nice_text = SYNC_PATTERN.sub("", text)
+# Highlight the sync pattern
+text = SYNC_PATTERN.sub(lambda x: f":blue[{x.group()}]", text)
+
+st.markdown(text)
+st.markdown(nice_text)
+
+
 query = st.text_input("Query", value="delete")
 nb_results = st.slider("Number of results", 1, 100, 5)
 
@@ -51,9 +61,13 @@ if query:
     top_chunks = db.get_chunks(top_chunks_ids)
     chunks = {chunk.id: chunk for chunk in top_chunks}
 
+    if len(chunks) == 0:
+        st.text("No chunks found")
+        st.stop()
+
     docs_ids = set(chunk.document_id for chunk in top_chunks)
 
-    documents = {doc_id: db.get_document_by_id(doc_id) for doc_id in docs_ids}
+    documents = {doc_id: db.get_document(doc_id) for doc_id in docs_ids}
     assets: dict[int, dict[str, list[Asset]]] = {}
     for doc_id in docs_ids:
         assets[doc_id] = defaultdict(list)
@@ -92,8 +106,13 @@ if query:
 
         for asset in assets_of_type:
             if asset.path is not None:
-                st.markdown(f"### {asset.path}")
-                st.code(asset.path.read_text())
+                # For .md and .txt files, we can use .markdown, for others we can use .code
+                if asset.path.suffix in [".md", ".txt"]:
+                    st.markdown(f"### {asset.path}")
+                    st.markdown(asset.path.read_text())
+                else:
+                    st.markdown(f"### {asset.path}")
+                    st.code(asset.path.read_text())
             elif asset.type == AssetType.CHUNK_ID:
                 chunk = db.get_chunks([int(asset.content)])[0]
                 st.markdown(f"#### Chunk {chunk.document_order}")
@@ -101,6 +120,14 @@ if query:
             else:
                 st.markdown(f"### Asset {asset.id}")
                 st.code(asset.content)
+
+            if asset.url is not None:
+                st.link_button(
+                    label="Open",
+                    url=asset.url,
+                    type="secondary",
+                    icon=":material/open_in_new:",
+                )
 
                 # path = asset.path
                 # st.markdown(f"### {path}")
@@ -140,6 +167,16 @@ with tabs[0]:
 
 # Show numbers of chunks per document
 with tabs[1]:
+    # Number of words in all chunks
+    db.cursor.execute("SELECT content FROM chunks")
+    word_count = sum(len(chunk["content"].split()) for chunk in db.cursor.fetchall())
+    st.metric("Number of words in all chunks", millify(word_count, precision=1))
+
+    # Number of characters in all chunks
+    db.cursor.execute("SELECT SUM(LENGTH(content)) FROM chunks")
+    rows = db.cursor.fetchall()
+    st.metric("Number of characters in all chunks", millify(rows[0][0], precision=1))
+
     db.cursor.execute(
         """
         SELECT COUNT(*), document_id
@@ -152,5 +189,5 @@ with tabs[1]:
     stats = [{"document_id": row[1], "count": row[0]} for row in rows]
     stats.sort(key=lambda x: x["count"], reverse=True)
     for stat in stats:
-        doc = db.get_document_by_id(stat["document_id"])
+        doc = db.get_document(stat["document_id"])
         st.markdown(f"Document {doc.source_id} ({doc.title}): {stat['count']} chunks")

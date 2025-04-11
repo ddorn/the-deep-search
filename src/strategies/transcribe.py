@@ -75,8 +75,14 @@ class TranscribeStrategy(Module[TranscribeStrategyConfig]):
         )
 
     async def chunked_transcribe(self, audio_file: Path):
-        # Read the audio file in chunks of 10min, and overlap by 1min
-        chunk_spacing = 10 * 60
+
+        # If less than 25MB, we can send it directly
+        if audio_file.stat().st_size < 25 * 1024 * 1024:
+            transcript = await self.transcribe_short_audio(audio_file, 0)
+            return transcript
+        
+        # Read the audio file in chunks of 20, and overlap by 1min
+        chunk_spacing = 20 * 60
         chunk_overlap = 2 * 60
 
         transcripts_tasks = []

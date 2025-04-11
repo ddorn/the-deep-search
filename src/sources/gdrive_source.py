@@ -43,13 +43,17 @@ class GDriveSource(FingerprintedSource[GDriveSourceConfig]):
         return PartialAsset(
             document_id=document_id,
             created_by_task_id=None,
-            type=AssetType.GOOGLE_DOC + "/" + self.title,
+            type=AssetType.GOOGLE_DOC,
             content=doc.urn,
         )
 
     def add_rules(self, rules):
         return rules + [
-            Rule(pattern=AssetType.GOOGLE_DOC + "/" + self.title, strategy=self.title),
+            Rule(
+                source=self.title,
+                asset_type=AssetType.GOOGLE_DOC,
+                strategy=self.title,
+            ),
         ]
 
     async def process_all(self, tasks: list[Task]):

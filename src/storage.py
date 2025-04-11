@@ -127,8 +127,8 @@ class Database:
 
     def create_document(self, doc: PartialDocument, commit=True):
         cur = self.cursor.execute(
-            "INSERT INTO documents (source_urn, source_id, title) VALUES (?, ?, ?)",
-            (doc.source_urn, doc.source_id, doc.title),
+            "INSERT INTO documents (source_urn, source_id, title, url) VALUES (?, ?, ?, ?)",
+            (doc.source_urn, doc.source_id, doc.title, doc.url),
         )
 
         if commit:
@@ -136,13 +136,20 @@ class Database:
 
         return cur.lastrowid
 
-    def get_document_by_id(self, id: str) -> Document | None:
+    def get_document(self, id: str) -> Document | None:
         row = self.cursor.execute(
             "SELECT * FROM documents WHERE id = ?",
             (id,),
         ).fetchone()
 
         return Document(**row) if row else None
+
+    def get_documents(self, ids: list[int]) -> list[Document]:
+        rows = self.cursor.execute(
+            "SELECT * FROM documents WHERE id IN (%s)" % ",".join("?" * len(ids)),
+            ids,
+        ).fetchall()
+        return self._make_ordered_list_from_results(rows, ids, Document)
 
     def get_ids_from_urns(self, source: str, urns: list[str]) -> dict[str, int]:
         rows = self.cursor.execute(
@@ -356,7 +363,8 @@ class Database:
         # Make space for new chunks
         new_chunks = [chunk_id for chunk_id in chunk_ids if chunk_id not in chunk_to_idx]
         new_space = np.empty(
-            (len(new_chunks), self.config.global_config.embedding_dimension), dtype=np.float32
+            (len(new_chunks), self.config.global_config.embedding_dimension),
+            dtype=np.float32,
         )
         current_embeddings = np.concatenate((current_embeddings, new_space), axis=0)
         chunk_to_idx.update(
@@ -433,7 +441,8 @@ class Database:
         )
         self.db.commit()
         self.cursor.execute(
-            "UPDATE tasks SET status = ? WHERE strategy = ?", [TaskStatus.PENDING, strategy]
+            "UPDATE tasks SET status = ? WHERE strategy = ?",
+            [TaskStatus.PENDING, strategy],
         )
         self.db.commit()
 
@@ -519,6 +528,7 @@ class Database:
     def migrate(self):
         migrations = [
             self.migrate_0_to_1,
+            self.migrate_1_to_2,
         ]
 
         if self.version == len(migrations):
@@ -579,6 +589,8 @@ class Database:
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             created_at TIMESTAMP NOT NULL DEFAULT (DATETIME('now', 'utc')),
 
+            url TEXT,
+
             document_id INTEGER,
             created_by_task_id INTEGER,
             next_steps_created BOOLEAN,
@@ -612,6 +624,11 @@ class Database:
             created_at TIMESTAMP NOT NULL DEFAULT (DATETIME('now', 'utc'))
         )"""
         )
+
+    def migrate_1_to_2(self):
+        """Migration to add url column to documents table."""
+        self.cursor.execute("ALTER TABLE documents ADD COLUMN url TEXT")
+        self.db.commit()
 
 
 def setup_db(extra_path_for_config: Path | None = None):

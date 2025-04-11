@@ -1,5 +1,4 @@
 import asyncio
-import re
 from collections import defaultdict
 from contextlib import ExitStack, contextmanager
 
@@ -137,9 +136,12 @@ class Executor:
     def create_tasks_from_unhandled_assets(self):
         db = get_db()
 
-        for asset in db.get_unhandled_assets():
+        assets = db.get_unhandled_assets()
+        documents = db.get_documents([asset.document_id for asset in assets])
+
+        for asset, document in zip(assets, documents, strict=True):
             for rule in self.rules:
-                if re.match(rule.pattern, asset.type):
+                if rule.matches(asset, document):
                     db.create_task(
                         PartialTask(
                             strategy=rule.strategy,

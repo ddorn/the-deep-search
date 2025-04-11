@@ -14,7 +14,7 @@ from executor import Executor
 from logs import logger
 from storage import setup_db
 
-load_dotenv()
+load_dotenv(override=True)
 
 app = Typer(no_args_is_help=True, add_completion=False)
 
@@ -69,7 +69,9 @@ def reprocess_doc(doc_id: int):
 def delete_all_data():
     shutil.rmtree(DIRS.user_data_path)
     shutil.rmtree(DIRS.user_cache_path)
-    logger.warning(f"Deleted all data in {DIRS.user_data_path} and {DIRS.user_cache_path}")
+    logger.warning(
+        f"Deleted all data in {DIRS.user_data_path} and {DIRS.user_cache_path}"
+    )
 
 
 @app.command()

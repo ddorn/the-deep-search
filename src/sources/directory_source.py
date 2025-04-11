@@ -9,6 +9,10 @@ from sources.fingerprinted_source import DocInfo, FingerprintedSource
 
 
 class DirectorySourceConfig(BaseModel):
+    # TODO:
+    # Currently, this path can be relative,
+    # But we assume it isn't for generating
+    # URLs to the document.
     path: Path
     ignore: str = ""
 
@@ -29,11 +33,14 @@ class DirectorySource(FingerprintedSource[DirectorySourceConfig]):
             )
 
     def mk_asset(self, document_id, doc):
+        path = self.full_path_from_urn(doc.urn)
+
         return PartialAsset(
             document_id=document_id,
             created_by_task_id=None,
             type=AssetType.GENERIC_FILE,
-            path=self.full_path_from_urn(doc.urn),
+            path=path,
+            url=f"file://{str(path)}",
         )
 
     def compute_hash(self, file_path: Path) -> str:

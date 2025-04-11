@@ -33,8 +33,8 @@ class TranscriptToSyncedTextStrategy(Module):
                 sync_token = SYNC_FORMAT.format(id=f"{start_time:.2f}")
                 processed_text.append(sync_token + text)
 
-            # Join all segments with spaces
-            final_text = " ".join(processed_text)
+            # Join all segments adding a space between them, if they don't start or end with one.
+            final_text = " ".join(segment.strip() for segment in processed_text if segment)
 
             # Write the processed text
             out_path = self.path_for_asset("sync_tokens", f"{task.document_id}.txt")

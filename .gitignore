@@ -1,3 +1,4 @@
+.vscode
 # Python-generated files
 __pycache__/
 *.py[oc]
@@ -10,5 +11,6 @@ wheels/
 .venv
 .envrc
 .env
+data/
 src/import.ipynb
 src/pairs.json

@@ -57,7 +57,7 @@ class CompressAudioInPlaceStrategy(Module[CompressAudioInPlaceConfig]):
             if process.returncode == 0:
                 # Replace original with compressed version
                 output_path.replace(path)
-                logger.info("Replaced original file with compressed version")
+                logger.info(f"Replaced {path} with compressed version.")
             else:
                 logger.error(f"Error compressing {path.name}:")
                 logger.error(f"Return code: {process.returncode}")

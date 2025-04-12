@@ -1,0 +1,95 @@
+- role: system
+  content: |-
+    You are part of the pipeline of a search engine that searches through podcasts.
+    GOAL: You process sections of automatically generated podcast transcripts to make them pleasant to read, browse or skim for a human reader.
+
+    Your task is to rewrite the following podcast section transcript in a pleasant to read markdown file. For this:
+    - Add headers for sections
+    Add bullet points as often as you can, but not always. Use a dash and one space (like so "- content") for lists.
+    - Add numbered lists when things are enumerated
+    - Add bold and italics to highlight important concepts or ideas. Those are great entrypoints in the middle of the text for readers.
+    - You can fix small transcriptions issues (repeated words, typos, etc.)
+    - There's a title at the start of the section, keep it, with the same depth of heading (e.g. keep ### if there are three #)
+
+    There are 3 important constraints
+    - The text contains many `<sync-id="...">`. You need to keep them where they are relative to the words around them.
+      - For instance "I like <sync-id="4">apples" needs to keep the sync-id just before the word apple.
+      - If some words are removed, for instance because the text was "I like<sync-id="8"> like apples", keep it between the same words that are kept, so between the first "like" and the "apple"
+      - Spacing around the sync tokens: the text should be normal (i.e. exactly one space between prose words, the right amount in code...) when the sync tokens are removed. So an output of "I like <sync-id="8"> apples" or "I like<sync-id="8">apples" are bad, as removing the sync tokens would leave 2 spaces, or 0 spaces between the words, respectively.
+    - Rewrite the whole text. All of the content should be present in your output, you should not remove nor add content, but you need to only add formating and fix mistakes.
+    - Output only the reformatted section, with no comments.
+
+- role: user
+  content: |-
+    ## Introduction & Viral Twitter Thread
+    <sync-id="0.00"> I'm Cal Newport and this is Deep Questions, the show about cultivating a deep life in <sync-id="17.76"> a distracted world. <sync-id="22.76"> I'm here on my Deep Work HQ, joined as always by my producer, Jesse. <sync-id="27.66"> Jesse, we got a good show. <sync-id="30.16"> I want to give a caveat or maybe reassurance to the audience. <sync-id="35.34"> The deep dive is going to start on a baseball-related topic. <sync-id="40.72"> Yeah, baby. <sync-id="41.46"> It is baseball season, but you will see it quickly will generalize into a topic about all of us. <sync-id="47.60"> So it won't actually be a baseball-themed deep dive, but I had to throw in a little Easter egg there for baseball fans. <sync-id="52.62"> So we got some good questions. <sync-id="54.32"> It's the first episode of April. <sync-id="55.56"> So in the final segment, we'll take a break for my increasingly pendantic AI-themed tech corners, which I've been enjoying, to talk about the books I read in March. <sync-id="67.08"> So it should be a good change of space. <sync-id="68.72"> Before we get there, I don't know if you've seen this, Jesse. <sync-id="70.98"> People I know who barely use Twitter or X, whatever we call it, keep saying, hey, I'm seeing you on there. <sync-id="78.94"> I'm seeing you on there, right? <sync-id="80.60"> And so I looked into it, and there's one of these Twitter threads that people do. <sync-id="87.18"> You know how there's – you see all the time on Twitter these threads where it's like lots of information, and then at the end, it's like, if you like what you read here, like sign up for my whatever, whatever. <sync-id="96.82"> I'm like, okay, everyone must be taking the same online course about social media marketing, but I never really understood the point of this. <sync-id="103.16"> And then I discovered what everyone was seeing is there's one of these threads about my work and it's been viewed 3.6 million times. <sync-id="113.36"> How did you do the research to find out where it was? <sync-id="116.98"> People – some people just sent it to me. <sync-id="118.92"> Like they're asking me – they're quoting me things from this thread. <sync-id="121.92"> So I've read it. <sync-id="123.44"> Some of it's accurate. <sync-id="124.18"> Some of it's not. <sync-id="124.76"> So it opens by saying, I mean, it has the heroic shot of me from the Financial Times magazine cover where I'm like looking up heroically into the sky. <sync-id="134.86"> Yeah, she was cool. <sync-id="135.46"> I remember she was following you around at your book event. <sync-id="137.94"> Yeah. <sync-id="138.34"> So that photographer, we took that picture in the parking lot behind HQ, by the way, because that was the only place a good clear sky. <sync-id="145.28"> It starts by saying he deleted almost every app from his phone. <sync-id="148.02"> Then he wrote four bestsellers in nine years. <sync-id="149.56"> Well, I didn't really delete apps from my phone. <sync-id="151.42"> I just never had them. <sync-id="152.18"> I never had them. <sync-id="153.36"> But then it's like a pretty good summary of like some research I wrote about, some research I don't. <sync-id="158.18"> And then I noticed at some point – I was just looking at this before we went on the air here. <sync-id="162.72"> There's this really specific mention where he's like, yeah, and he says like, you know, you could use apps such as – I won't use the name of the app – to help you fight distractions. <sync-id="172.32"> It's like, I've never heard of that before. <sync-id="174.42"> And then you get to the bottom of the thread and you're like, oh, this is someone from that company. <sync-id="178.52"> And so like at the end, it's like, oh, you should download this like screen control app or something like that. <sync-id="182.28"> So if like 3% of the people download the app, it's like a success. <sync-id="185.74"> Yeah. <sync-id="186.14"> Which actually 3% out of 3 million is pretty good. <sync-id="188.70"> It's pretty good. <sync-id="189.68"> So I guess that's why people do these like threads with like a call to action at the end. <sync-id="193.50"> It's like they mainly don't work. <sync-id="195.02"> But every once in a while, something like catches a slipstream because people kept saying like, hey, you delete all your apps or whatever. <sync-id="200.58"> So I guess it got on people's screens. <sync-id="202.18"> So there you go. <sync-id="203.72"> Twitter slash X in progress. <sync-id="206.10"> All right. <sync-id="206.30"> We got a good show. 
+
+- role: assistant
+  content: |-
+    ## Introduction & Viral Twitter Thread
+
+    <sync-id="0.00">I'm Cal Newport and this is **Deep Questions**, the show about cultivating a *deep life* in<sync-id="17.76"> a *distracted world*.<sync-id="22.76"> I'm here in my **Deep Work HQ**, joined as always by my producer, Jesse.<sync-id="27.66"> Jesse, we got a good show.
+
+    <sync-id="30.16">I want to give a caveat or maybe reassurance to the audience:<sync-id="35.34"> the deep dive is going to start on a **baseball-related topic**.<sync-id="40.72"> Yeah, baby.<sync-id="41.46"> It is *baseball season*, but you will see it quickly will generalize into a topic about all of us.<sync-id="47.60"> So it won't actually be a baseball-themed deep dive, but I had to throw in a little Easter egg there for baseball fans.
+
+    <sync-id="52.62">So we got some good questions.<sync-id="54.32"> It's the first episode of April.<sync-id="55.56"> So in the final segment, we'll take a break from my increasingly *pedantic* AI-themed tech corners (which I've been enjoying) to talk about the **books I read in March**.<sync-id="67.08"> So it should be a good change of pace.
+
+    ### The Viral Twitter Thread
+
+    <sync-id="68.72">Before we get there, I don't know if you've seen this, Jesse.<sync-id="70.98"> People I know who barely use Twitter or X (whatever we call it) keep saying, "Hey, I'm seeing you on there.<sync-id="78.94"> I'm seeing you on there, right?"<sync-id="80.60"> And so I looked into it, and there's one of these **Twitter threads** that people do.
+
+    <sync-id="87.18">You know how you see these all the time on Twitter:
+    - Threads with lots of information.
+    - At the end, there's a call to action like, "If you like what you read here, sign up for my whatever."<sync-id="96.82">
+
+    I'm like, okay, everyone must be taking the same online course about *social media marketing*, but I never really understood the point of this.<sync-id="103.16"> And then I discovered what everyone was seeing: there's one of these threads *about my work* and it's been viewed **3.6 million times**.<sync-id="113.36">
+
+    How did you do the research to find out where it was?<sync-id="116.98"> Some people just sent it to me.<sync-id="118.92"> Like, they're asking me – they're quoting me things from this thread.<sync-id="121.92"> So I've read it.<sync-id="123.44"> Some of it's accurate.<sync-id="124.18"> Some of it's not.
+
+    <sync-id="124.76">So it opens by saying – I mean, it has the heroic shot of me from the *Financial Times* magazine cover where I'm like looking up heroically into the sky.<sync-id="134.86"> (Yeah, she was cool.<sync-id="135.46"> I remember she was following you around at your book event.<sync-id="137.94"> Yeah.<sync-id="138.34"> So that photographer, we took that picture in the parking lot behind HQ, by the way, because that was the only place with a good clear sky.)
+
+    <sync-id="145.28">It starts by saying:
+    1. He deleted almost every app from his phone.<sync-id="148.02">
+    2. Then he wrote four bestsellers in nine years.<sync-id="149.56">
+
+    Well, I didn't really delete apps from my phone;<sync-id="151.42"> **I just never had them.**<sync-id="152.18"><sync-id="153.36"> But then it's like a pretty good summary of some research I wrote about, some research I don't.<sync-id="158.18"> And then I noticed at some point – I was just looking at this before we went on the air here –<sync-id="162.72"> there's this really specific mention where he's like, "Yeah, and he says like, you know, you could use apps such as [App Name Redacted] to help you fight distractions."<sync-id="172.32"> It's like, *I've never heard of that before*.
+
+    <sync-id="174.42">And then you get to the bottom of the thread and you're like, oh, **this is someone from that company**.<sync-id="178.52"> And so like at the end, it's like, "Oh, you should download this like screen control app or something like that."<sync-id="182.28"> So if like 3% of the people download the app, it's like a success.<sync-id="185.74"> Yeah.<sync-id="186.14"> Which actually 3% out of 3 million is pretty good.<sync-id="188.70"> It's pretty good.
+
+    <sync-id="189.68">So I guess that's why people do these threads with like a *call to action* at the end.<sync-id="193.50"> It's like they mainly don't work.<sync-id="195.02"> But every once in a while, something catches a slipstream because people kept saying like, "Hey, you deleted all your apps" or whatever.<sync-id="200.58"> So I guess it got on people's screens.<sync-id="202.18"> So there you go.<sync-id="203.72"> **Twitter/X in progress**.
+
+    <sync-id="206.10">All right.<sync-id="206.30"> We got a good show.
+
+- role: user
+  content: |-
+    ### Refocusing on Secondary Harms and Personal Values
+    <sync-id="993.36"> remember the importance of secondary harms. And the way to do that is to keep remembering what it <sync-id="1000.66"> is that you do care about. This is the key message of digital minimalism. What do you value? How do <sync-id="1005.44"> you want to spend your time? If you don't have good answers for that, and don't worry, you probably <sync-id="1008.88"> don't, especially if you're young. This takes time and experimentation. Go start searching. <sync-id="1013.72"> Try things, connect to people, reflect. Begin to find the things that gives you a deeper, <sync-id="1019.22"> richer, thicker sense of value. And then begin to assess these other things in your life about <sync-id="1024.14"> whether that's helping those things or getting in the way. Right? The secondary harms are reduced <sync-id="1029.70"> When we begin to embrace stuff that really matters in our lives, it completely changes our relationships with our phones. <sync-id="1034.30"> So unless you like a tech journalist or a technology investor I don know how much time you should be thinking about how exactly specific tools are being run or who is in charge of them or what good or bad about them <sync-id="1044.71"> What you should be thinking instead is what is this doing in my life? <sync-id="1047.95"> Am I spending more time on things I care about or less? <sync-id="1050.95"> If it's less, then I'm going to curtail this either completely or put a lot of fences around it. 
+
+- role: assistant
+  content: |-
+    ### Refocusing on Secondary Harms and Personal Values
+
+    Remember the importance of **secondary harms**.<sync-id="993.36"> The way to do that is to keep remembering what it<sync-id="1000.66"> is that you *do* care about. This is the key message of **digital minimalism**:
+
+    -   **What do you value?**
+    -   **How do<sync-id="1005.44"> you want to spend your time?**
+
+    If you don't have good answers for that (and don't worry, you probably<sync-id="1008.88"> don't, especially if you're young), recognize that this takes time and experimentation. Go start searching.<sync-id="1013.72">
+
+    -   Try things.
+    -   Connect to people.
+    -   Reflect.
+
+    Begin to find the things that give you a deeper,<sync-id="1019.22"> richer, thicker sense of **value**.
+
+    Then, begin to assess other things in your life<sync-id="1024.14"> based on whether they are *helping* those values or *getting in the way*. Right?
+
+    The **secondary harms** are reduced<sync-id="1029.70"> when we begin to embrace stuff that really matters in our lives. It completely changes our relationships with our phones.<sync-id="1034.30">
+
+    So, unless you're like a tech journalist or a technology investor, I don't know how much time you should be spending thinking about how exactly specific tools are being run, who is in charge of them, or what's good or bad about them.<sync-id="1044.71">
+
+    What you should be thinking instead is:
+    -   **What is this doing in my life?**<sync-id="1047.95">
+    -   **Am I spending more time on things I care about, or less?**<sync-id="1050.95">
+
+    If the answer is *less*, then you need to curtail this technology's use, either completely or by putting significant fences around it.

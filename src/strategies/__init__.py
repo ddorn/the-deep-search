@@ -5,6 +5,7 @@ from .compress_audio import CompressAudioInPlaceStrategy
 from .create_structure import CreateStructureStrategy
 from .dl_audio import DlAudioStrategy
 from .embed_chunks import EmbedChunksStrategy
+from .pretty_markdown import PrettyMarkdownStrategy
 from .strategy import Module
 from .strategy import Source as Source
 from .transcribe import TranscribeStrategy
@@ -20,4 +21,5 @@ BUILT_IN_STRATEGIES: dict[str, type[Module]] = {
     TranscribeStrategy.NAME: TranscribeStrategy,
     CompressAudioInPlaceStrategy.NAME: CompressAudioInPlaceStrategy,
     CreateStructureStrategy.NAME: CreateStructureStrategy,
+    PrettyMarkdownStrategy.NAME: PrettyMarkdownStrategy,
 }

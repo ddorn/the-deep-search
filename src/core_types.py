@@ -32,6 +32,7 @@ class Task(PartialTask, DBModel):
 
 class PartialChunk(BaseModel):
     document_id: int
+    # Position of chunk in document
     document_order: int
     content: str
 
@@ -62,6 +63,7 @@ class AssetType(StrEnum):
     CHUNK_ID = "chunk_id"
     EMBEDDING_ID = "embedding_id"
     STRUCTURE = "structure"
+    NICE_MARKDOWN = "nice_markdown"
 
 
 class PartialAsset(BaseModel):

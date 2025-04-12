@@ -641,7 +641,7 @@ def get_db() -> Database:
     return DATABASES[CURRENT_DATABASE]
 
 
-def set_db(db_name: str, db: Database):
+def set_db(db_name: str, db: Database) -> Database:
     """Set the current database instance."""
     global CURRENT_DATABASE
 
@@ -650,6 +650,8 @@ def set_db(db_name: str, db: Database):
 
     DATABASES[db_name] = db
     CURRENT_DATABASE = db_name
+
+    return db
 
 
 @contextmanager

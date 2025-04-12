@@ -24,7 +24,7 @@ if not _RELEASE:
         # We give the component a simple, descriptive name ("my_component"
         # does not fit this bill, so please choose something better for your
         # own component :)
-        "syncid_linker",
+        "mark_linker",
         # Pass `url` here to tell Streamlit that the component will be served
         # by the local dev server that you run via `npm run start`.
         # (This is useful while your component is in development.)
@@ -36,7 +36,7 @@ else:
     # build directory:
     parent_dir = os.path.dirname(os.path.abspath(__file__))
     build_dir = os.path.join(parent_dir, "frontend/build")
-    _component_func = components.declare_component("syncid_linker", path=build_dir)
+    _component_func = components.declare_component("mark_linker", path=build_dir)
 
 
 # Create a wrapper function for the component. This is an optional
@@ -44,9 +44,13 @@ else:
 # `declare_component` and call it done. The wrapper allows us to customize
 # our component's API: we can pre-process its input args, post-process its
 # output value, and add a docstring for users.
-def syncid_linker(markdown, mapping=None, key=None):
-    mapping = mapping or {}
-
-    component_value = _component_func(markdown=markdown, mapping=mapping, key=key, default=None)
+def mark_linker(markdown, highlighted_mark=None, first_mark="0", key=None):
+    component_value = _component_func(
+        markdown=markdown,
+        highlighted_mark=highlighted_mark,
+        first_mark=first_mark,
+        key=key,
+        default=None,
+    )
 
     return component_value

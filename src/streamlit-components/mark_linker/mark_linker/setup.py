@@ -6,11 +6,11 @@ this_directory = Path(__file__).parent
 long_description = (this_directory / "README.md").read_text()
 
 setuptools.setup(
-    name="syncid-linker",
+    name="marks-linker",
     version="0.0.1",
     author="Félix Dorn",
     author_email="d@xfe.li",
-    description="Link sync-ids from MD/HTML",
+    description="Link marks from MD/HTML",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="",

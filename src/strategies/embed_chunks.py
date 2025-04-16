@@ -24,6 +24,9 @@ class EmbedChunksStrategy(Module):
         chunks = db.get_chunks([int(asset.content) for asset in assets])
 
         texts = [chunk.content for chunk in chunks]
+        # We first remove the syncing tokens
+        texts = [SYNC_PATTERN.sub("", text) for text in texts]
+
         embeddings = await self.embed_texts(texts)
 
         for chunk, task in zip(chunks, tasks, strict=True):
@@ -42,9 +45,6 @@ class EmbedChunksStrategy(Module):
 
     async def embed_texts(self, texts: list[str]) -> np.ndarray:
         db = get_db()
-
-        # We first remove the syncing tokens
-        texts = [SYNC_PATTERN.sub("", text) for text in texts]
 
         response = await self.openai.embeddings.create(
             dimensions=db.config.global_config.embedding_dimension,

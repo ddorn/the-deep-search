@@ -181,6 +181,9 @@ class Database:
             document_ids,
         )
 
+    def count_documents(self) -> int:
+        return self.db.execute("SELECT COUNT(*) FROM documents").fetchone()[0]
+
     # -- Assets --
 
     def create_asset(self, asset: PartialAsset) -> int:

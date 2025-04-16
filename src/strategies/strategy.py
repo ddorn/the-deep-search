@@ -8,6 +8,7 @@ from openai import BaseModel
 
 from constants import DIRS
 from core_types import Rule, Task
+from storage import Database
 
 NOT_GIVEN = object()
 
@@ -24,8 +25,9 @@ class Module[ConfigType: BaseModel](abc.ABC):
     PRIORITY: ClassVar[int] = 0
     INPUT_ASSET_TYPE: ClassVar[str | None] = None
 
-    def __init__(self, config: ConfigType):
+    def __init__(self, config: ConfigType, db: Database):
         self.config = config
+        self.db = db
 
     async def process_all(self, tasks: list[Task]) -> None:
         """
@@ -98,8 +100,8 @@ class Module[ConfigType: BaseModel](abc.ABC):
 
 class Source[ConfigType: BaseModel](Module[ConfigType]):
 
-    def __init__(self, config: ConfigType, title: str):
-        super().__init__(config)
+    def __init__(self, config: ConfigType, db: Database, title: str):
+        super().__init__(config, db)
         self.title = title
 
     def data_folder_name(self):

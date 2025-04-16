@@ -9,7 +9,7 @@ from pydantic import BaseModel
 
 from core_types import Asset, AssetType, PartialAsset, Task
 from logs import logger
-from storage import get_db
+from storage import Database
 from strategies.strategy import Module
 
 
@@ -34,17 +34,15 @@ class TranscribeStrategy(Module[TranscribeStrategyConfig]):
     INPUT_ASSET_TYPE = AssetType.AUDIO_FILE
     CONFIG_TYPE = TranscribeStrategyConfig
 
-    def __init__(self, config):
-        super().__init__(config)
+    def __init__(self, config, db: Database):
+        super().__init__(config, db)
         self.openai = openai.AsyncClient(
             base_url="https://api.groq.com/openai/v1",
             api_key=os.getenv("GROQ_API_KEY"),
         )
 
     async def process_all(self, tasks: list[Task]):
-        db = get_db()
-
-        assets = db.get_assets([task.input_asset_id for task in tasks])
+        assets = self.db.get_assets([task.input_asset_id for task in tasks])
 
         for task, asset in zip(tasks, assets):
             await self.process_one(task, asset)
@@ -63,9 +61,7 @@ class TranscribeStrategy(Module[TranscribeStrategyConfig]):
         transcript_file = self.path_for_asset("transcript", f"{task.document_id}.json")
         transcript_file.write_text(transcript.model_dump_json())
 
-        db = get_db()
-
-        db.create_asset(
+        self.db.create_asset(
             PartialAsset(
                 document_id=task.document_id,
                 created_by_task_id=task.id,
@@ -80,7 +76,7 @@ class TranscribeStrategy(Module[TranscribeStrategyConfig]):
         if audio_file.stat().st_size < 25 * 1024 * 1024:
             transcript = await self.transcribe_short_audio(audio_file, 0)
             return transcript
-        
+
         # Read the audio file in chunks of 20, and overlap by 1min
         chunk_spacing = 20 * 60
         chunk_overlap = 2 * 60
@@ -244,8 +240,7 @@ class TranscribeStrategy(Module[TranscribeStrategyConfig]):
         logger.info(f"Imported transcript for document {task.document_id}")
 
         # Create the asset for the downloaded audio file
-        db = get_db()
-        db.create_asset(
+        self.db.create_asset(
             PartialAsset(
                 document_id=task.document_id,
                 created_by_task_id=task.id,

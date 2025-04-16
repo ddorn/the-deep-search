@@ -6,7 +6,6 @@ from pydantic import BaseModel
 
 from core_types import AssetType, PartialAsset, PartialTask, Task
 from logs import logger
-from storage import get_db
 from strategies.compress_audio import CompressAudioInPlaceStrategy
 from strategies.strategy import Module
 
@@ -23,17 +22,13 @@ class DlAudioStrategy(Module[DlAudioConfig]):
     CONFIG_TYPE = DlAudioConfig
 
     async def process_all(self, tasks: list[Task]):
-        db = get_db()
-
-        assets = db.get_assets([task.input_asset_id for task in tasks])
+        assets = self.db.get_assets([task.input_asset_id for task in tasks])
 
         async with aiohttp.ClientSession() as session:
             for asset, task in zip(assets, tasks, strict=True):
                 await self.process_one(asset, task, session)
 
     async def process_one(self, asset, task, session):
-        db = get_db()
-
         if self.import_if_exists(task):
             return
 
@@ -53,7 +48,7 @@ class DlAudioStrategy(Module[DlAudioConfig]):
                     f.write(chunk)
 
         # Create the asset for the downloaded audio file
-        output_asset = db.create_asset(
+        output_asset = self.db.create_asset(
             PartialAsset(
                 document_id=task.document_id,
                 created_by_task_id=task.id,
@@ -63,7 +58,7 @@ class DlAudioStrategy(Module[DlAudioConfig]):
         )
 
         if self.config.compress:
-            db.create_task(
+            self.db.create_task(
                 PartialTask(
                     document_id=task.document_id,
                     strategy=CompressAudioInPlaceStrategy.NAME,
@@ -89,8 +84,7 @@ class DlAudioStrategy(Module[DlAudioConfig]):
         logger.info(f"Moved file from {original_path} to {target_path}")
 
         # Create the asset for the downloaded audio file
-        db = get_db()
-        db.create_asset(
+        self.db.create_asset(
             PartialAsset(
                 document_id=task.document_id,
                 created_by_task_id=task.id,

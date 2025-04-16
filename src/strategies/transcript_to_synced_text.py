@@ -2,7 +2,6 @@ import json
 
 from constants import SYNC_FORMAT
 from core_types import AssetType, PartialAsset, Task
-from storage import get_db
 from strategies.strategy import Module
 
 
@@ -14,8 +13,7 @@ class TranscriptToSyncedTextStrategy(Module):
     INPUT_ASSET_TYPE = AssetType.TRANSCRIPT
 
     async def process_all(self, tasks: list[Task]) -> None:
-        db = get_db()
-        assets = db.get_assets([task.input_asset_id for task in tasks])
+        assets = self.db.get_assets([task.input_asset_id for task in tasks])
 
         for task, asset in zip(tasks, assets):
             # Read the transcript JSON file
@@ -41,7 +39,7 @@ class TranscriptToSyncedTextStrategy(Module):
             out_path.write_text(final_text)
 
             # Create new asset
-            db.create_asset(
+            self.db.create_asset(
                 PartialAsset(
                     document_id=task.document_id,
                     created_by_task_id=task.id,

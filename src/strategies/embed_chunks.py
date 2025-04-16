@@ -3,7 +3,7 @@ import openai
 
 from constants import SYNC_PATTERN
 from core_types import AssetType, PartialAsset, Task
-from storage import get_db
+from storage import Database
 from strategies.strategy import Module
 
 
@@ -13,15 +13,13 @@ class EmbedChunksStrategy(Module):
     MAX_BATCH_SIZE = 100
     INPUT_ASSET_TYPE = AssetType.CHUNK_ID
 
-    def __init__(self, config):
-        super().__init__(config)
+    def __init__(self, config, db: Database):
+        super().__init__(config, db)
         self.openai = openai.AsyncClient()
 
     async def process_all(self, tasks: list[Task]):
-        db = get_db()
-
-        assets = db.get_assets([task.input_asset_id for task in tasks])
-        chunks = db.get_chunks([int(asset.content) for asset in assets])
+        assets = self.db.get_assets([task.input_asset_id for task in tasks])
+        chunks = self.db.get_chunks([int(asset.content) for asset in assets])
 
         texts = [chunk.content for chunk in chunks]
         # We first remove the syncing tokens
@@ -30,7 +28,7 @@ class EmbedChunksStrategy(Module):
         embeddings = await self.embed_texts(texts)
 
         for chunk, task in zip(chunks, tasks, strict=True):
-            db.create_asset(
+            self.db.create_asset(
                 PartialAsset(
                     document_id=task.document_id,
                     created_by_task_id=task.id,
@@ -39,21 +37,19 @@ class EmbedChunksStrategy(Module):
                 )
             )
 
-        db.update_embeddings([chunk.id for chunk in chunks], embeddings)
+        self.db.update_embeddings([chunk.id for chunk in chunks], embeddings)
 
         return embeddings
 
     async def embed_texts(self, texts: list[str]) -> np.ndarray:
-        db = get_db()
-
         response = await self.openai.embeddings.create(
-            dimensions=db.config.global_config.embedding_dimension,
+            dimensions=self.db.config.global_config.embedding_dimension,
             model="text-embedding-3-small",
             input=texts,
         )
 
         embeddings = np.zeros(
-            (len(texts), db.config.global_config.embedding_dimension), dtype=np.float32
+            (len(texts), self.db.config.global_config.embedding_dimension), dtype=np.float32
         )
         for embedding in response.data:
             embeddings[embedding.index] = embedding.embedding

@@ -13,7 +13,6 @@ from pydantic import BaseModel
 from core_types import Asset, AssetType, PartialAsset, Rule
 from logs import logger
 from sources.fingerprinted_source import DocInfo, FingerprintedSource
-from storage import get_db
 
 
 class GDriveSourceConfig(BaseModel):
@@ -59,8 +58,7 @@ class GDriveSource(FingerprintedSource[GDriveSourceConfig]):
     async def process_all(self, tasks: list[Task]):
         """Download Google Docs."""
 
-        db = get_db()
-        assets = db.get_assets([task.input_asset_id for task in tasks])
+        assets = self.db.get_assets([task.input_asset_id for task in tasks])
 
         async with aiohttp.ClientSession() as session:
             await asyncio.gather(
@@ -87,7 +85,7 @@ class GDriveSource(FingerprintedSource[GDriveSourceConfig]):
         path = self.path_for_asset("gdoc", asset.content)
         path.write_text(gdoc)
 
-        get_db().create_asset(
+        self.db.create_asset(
             PartialAsset(
                 document_id=task.document_id,
                 created_by_task_id=task.id,

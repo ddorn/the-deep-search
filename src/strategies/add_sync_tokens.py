@@ -2,7 +2,6 @@ import re
 
 from constants import SYNC_FORMAT
 from core_types import AssetType, PartialAsset, Task
-from storage import get_db
 from strategies.strategy import Module
 
 
@@ -14,8 +13,7 @@ class AddSyncTokenStrategy(Module):
     INPUT_ASSET_TYPE = AssetType.TEXT_FILE
 
     async def process_all(self, tasks: list[Task]) -> None:
-        db = get_db()
-        assets = db.get_assets([task.input_asset_id for task in tasks])
+        assets = self.db.get_assets([task.input_asset_id for task in tasks])
 
         for task, asset in zip(tasks, assets):
             text = asset.path.read_text()
@@ -23,7 +21,7 @@ class AddSyncTokenStrategy(Module):
             out_path = self.path_for_asset("sync_tokens", asset.path.name)
             out_path.write_text(with_sync_tokens)
 
-            db.create_asset(
+            self.db.create_asset(
                 PartialAsset(
                     document_id=task.document_id,
                     created_by_task_id=task.id,

@@ -4,7 +4,6 @@ from litellm import completion
 from pydantic import BaseModel
 
 from core_types import AssetType, PartialAsset, Rule, Task
-from storage import get_db
 from strategies.strategy import Module
 
 PROMPT = """
@@ -57,9 +56,7 @@ class CreateStructureStrategy(Module[CreateStructureConfig]):
             return rules
 
     async def process_all(self, tasks: list[Task]):
-        db = get_db()
-
-        assets = db.get_assets([task.input_asset_id for task in tasks])
+        assets = self.db.get_assets([task.input_asset_id for task in tasks])
 
         for task, asset in zip(tasks, assets, strict=True):
             text = asset.path.read_text()
@@ -77,7 +74,7 @@ class CreateStructureStrategy(Module[CreateStructureConfig]):
 
             # Create a new asset
             path.write_text(sections.model_dump_json())
-            db.create_asset(
+            self.db.create_asset(
                 PartialAsset(
                     document_id=asset.document_id,
                     created_by_task_id=task.id,

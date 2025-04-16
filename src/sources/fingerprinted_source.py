@@ -7,7 +7,6 @@ from pydantic import BaseModel, Field
 
 from core_types import PartialAsset, PartialDocument
 from logs import logger
-from storage import get_db
 from strategies.strategy import Source
 
 
@@ -21,11 +20,9 @@ class DocInfo(BaseModel):
 class FingerprintedSource[ConfigType: BaseModel](Source[ConfigType]):
 
     def on_mount(self):
-
         if os.getenv("DS_NO_SYNC"):
             return
 
-        db = get_db()
         to_create = []
         to_delete = set()
 
@@ -48,9 +45,9 @@ class FingerprintedSource[ConfigType: BaseModel](Source[ConfigType]):
             to_delete.add(urn)
 
         # Directly delete document from the db (deleted & changed ones)
-        ids_to_delete = db.get_ids_from_urns(self.title, list(to_delete))
+        ids_to_delete = self.db.get_ids_from_urns(self.title, list(to_delete))
         if ids_to_delete:
-            db.delete_documents(list(ids_to_delete.values()))
+            self.db.delete_documents(list(ids_to_delete.values()))
             for urn in to_delete:
                 self.delete_fingerprint(urn)
 
@@ -59,15 +56,17 @@ class FingerprintedSource[ConfigType: BaseModel](Source[ConfigType]):
             self.on_new_document(doc)
 
     def on_new_document(self, doc: DocInfo):
-        db = get_db()
-
-        document_id = db.create_document(
+        document_id = self.db.create_document(
             PartialDocument(source_urn=doc.urn, source_id=self.title, title=doc.title)
         )
-        db.create_asset(self.mk_asset(document_id, doc))
+        self.db.create_asset(self.mk_asset(document_id, doc))
 
         self.save_fingerprint(doc.urn, doc.fingerprint)
-        db.commit()
+        self.db.commit()
+
+    def get_past_documents_urn(self) -> set[str]:
+        documents = self.db.get_documents_from_source(self.NAME)
+        return {document.source_urn for document in documents}
 
     @abc.abstractmethod
     def mk_asset(self, document_id: int, doc: DocInfo) -> PartialAsset:
@@ -96,8 +95,3 @@ class FingerprintedSource[ConfigType: BaseModel](Source[ConfigType]):
             self.fingerprint_path(urn).unlink()
         except FileNotFoundError:
             pass
-
-    def get_past_documents_urn(self) -> set[str]:
-        db = get_db()
-        documents = db.get_documents_from_source(self.NAME)
-        return {document.source_urn for document in documents}

@@ -1,7 +1,6 @@
 import mimetypes
 
 from core_types import Asset, AssetType, PartialAsset, Task
-from storage import get_db
 from strategies.strategy import Module
 
 
@@ -17,13 +16,12 @@ class AutoProcessStrategy(Module):
     INPUT_ASSET_TYPE = AssetType.GENERIC_FILE
 
     async def process_all(self, tasks: list[Task]) -> None:
-        assets = get_db().get_assets([task.input_asset_id for task in tasks])
+        assets = self.db.get_assets([task.input_asset_id for task in tasks])
 
         for task, asset in zip(tasks, assets):
             self.process(task, asset)
 
     def process(self, task: Task, asset: Asset):
-        db = get_db()
         path = asset.path
         assert path is not None
         mimetype, encoding = mimetypes.guess_type(path)
@@ -35,7 +33,7 @@ class AutoProcessStrategy(Module):
             raise ValueError(f"Can't determine actions for asset {asset} with mimetype={mimetype}")
 
         if mimetype.startswith("text/"):
-            db.create_asset(
+            self.db.create_asset(
                 PartialAsset(
                     document_id=asset.document_id,
                     created_by_task_id=task.id,

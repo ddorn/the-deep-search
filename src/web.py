@@ -75,13 +75,13 @@ def show_results(top_chunks):
         title_col.markdown(f"### *{doc.source_id}* {doc.title}")
 
         PROMPT = f"""
-            Extract the most relevant excerpt (10-20 words) from the chunk of text with respect to the below query. 
+            Extract the most relevant excerpt (10-20 words) from the chunk of text with respect to the below query.
 
 QUERY: {query}
 
 Your response should:
 - Contain only the most relevant excerpt from the text
-- Be the most related to the above query 
+- Be the most related to the above query
 - Include at least 10 words.
 - Include no additional text, introductions, or explanations
 - Preserve the exact wording from the original text

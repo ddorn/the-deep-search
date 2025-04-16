@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from yaml import safe_load
 
 from core_types import AssetType, PartialAsset, Task
-from storage import get_db
+from storage import Database
 from strategies.create_structure import Section
 from strategies.strategy import Module
 
@@ -28,18 +28,16 @@ class PrettyMarkdownStrategy(Module[PrettyMarkdownConfig]):
     CONFIG_TYPE = PrettyMarkdownConfig
     INPUT_ASSET_TYPE = AssetType.STRUCTURE
 
-    def __init__(self, config: PrettyMarkdownConfig) -> None:
-        super().__init__(config)
+    def __init__(self, config: PrettyMarkdownConfig, db: Database) -> None:
+        super().__init__(config, db)
         self.prompt = safe_load(PROMPT_FILE.read_text())
 
     async def process_all(self, tasks: list[Task]):
-        db = get_db()
-
-        assets = db.get_assets([task.input_asset_id for task in tasks])
+        assets = self.db.get_assets([task.input_asset_id for task in tasks])
 
         for task, asset in zip(tasks, assets, strict=True):
             structure = Section.model_validate_json(asset.path.read_text())
-            syncted_text_asset = db.get_assets_for_document(
+            syncted_text_asset = self.db.get_assets_for_document(
                 asset.document_id, AssetType.SYNCED_TEXT_FILE
             )[0]
             syncted_text = syncted_text_asset.path.read_text()
@@ -76,7 +74,7 @@ class PrettyMarkdownStrategy(Module[PrettyMarkdownConfig]):
             path = self.path_for_asset("nice_markdown", f"{asset.document_id}.md")
             path.write_text(content)
 
-            db.create_asset(
+            self.db.create_asset(
                 PartialAsset(
                     document_id=asset.document_id,
                     created_by_task_id=task.id,

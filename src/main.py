@@ -27,8 +27,8 @@ def main(config: Path = None, fresh: bool = False, no_sync: bool = False):
     if no_sync:
         os.environ["DS_NO_SYNC"] = "1"
 
-    setup_db(extra_path_for_config=config)
-    asyncio.run(Executor().main())
+    db = setup_db(extra_path_for_config=config)
+    asyncio.run(Executor(db).main())
 
 
 @app.command()

@@ -6,17 +6,17 @@ from config import Config
 from core_types import PartialTask, Rule, Task, TaskStatus
 from logs import logger
 from sources import BUILT_IN_SOURCES
-from storage import get_db
+from storage import Database
 from strategies import BUILT_IN_STRATEGIES
 from strategies.strategy import Module
 
 
 class Executor:
 
-    def __init__(self) -> None:
+    def __init__(self, db: Database) -> None:
         self.strategies: dict[str, Module] = {}
         self.rules: list[Rule] = []
-        self.db = get_db()
+        self.db = db
 
     def pick_tasks_to_run(self, tasks: list[Task]) -> list[Task]:
         assert tasks
@@ -72,14 +72,14 @@ class Executor:
         for name, strategy_class in BUILT_IN_STRATEGIES.items():
             raw_config = self.db.config.strategies.get(name, {})
             parsed_config = strategy_class.CONFIG_TYPE.model_validate(raw_config)
-            self.strategies[name] = strategy_class(parsed_config)
+            self.strategies[name] = strategy_class(parsed_config, self.db)
             self.rules = self.strategies[name].add_rules(self.rules)
 
         # Load all sources
         for name, source_config in self.db.config.sources.items():
             source_class = BUILT_IN_SOURCES[source_config.type]
             parsed_config = source_class.CONFIG_TYPE.model_validate(source_config.args)
-            self.strategies[name] = source_class(parsed_config, name)
+            self.strategies[name] = source_class(parsed_config, self.db, name)
             self.rules = self.strategies[name].add_rules(self.rules)
 
         self.db.restart_crashed_tasks()
@@ -137,15 +137,13 @@ class Executor:
         self.db.save_config(new_config)
 
     def create_tasks_from_unhandled_assets(self):
-        db = get_db()
-
-        assets = db.get_unhandled_assets()
-        documents = db.get_documents([asset.document_id for asset in assets])
+        assets = self.db.get_unhandled_assets()
+        documents = self.db.get_documents([asset.document_id for asset in assets])
 
         for asset, document in zip(assets, documents, strict=True):
             for rule in self.rules:
                 if rule.matches(asset, document):
-                    db.create_task(
+                    self.db.create_task(
                         PartialTask(
                             strategy=rule.strategy,
                             document_id=asset.document_id,
@@ -154,4 +152,4 @@ class Executor:
                         )
                     )
 
-            db.set_asset_next_steps_created(asset.id)
+            self.db.set_asset_next_steps_created(asset.id)

@@ -5,7 +5,6 @@ from pydantic import BaseModel
 
 from core_types import Rule, Task
 from logs import logger
-from storage import get_db
 from strategies.strategy import Module
 
 
@@ -25,9 +24,7 @@ class CompressAudioInPlaceStrategy(Module[CompressAudioInPlaceConfig]):
         return rules
 
     async def process_all(self, tasks: list[Task]):
-        db = get_db()
-
-        assets = db.get_assets([task.input_asset_id for task in tasks])
+        assets = self.db.get_assets([task.input_asset_id for task in tasks])
         paths = [asset.path for asset in assets]
 
         for path in paths:

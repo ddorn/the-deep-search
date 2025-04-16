@@ -2,7 +2,6 @@ import json
 import shutil
 import sqlite3
 from collections import Counter
-from contextlib import contextmanager
 from pathlib import Path
 
 import numpy as np
@@ -611,7 +610,7 @@ class Database:
         )
 
 
-def setup_db(extra_path_for_config: Path | None = None):
+def setup_db(extra_path_for_config: Path | None = None) -> Database:
     paths_for_config = [
         Path("config.yaml"),
         Path(__file__).parent.parent / "data" / "config-simple.yaml",
@@ -630,48 +629,4 @@ def setup_db(extra_path_for_config: Path | None = None):
         logger.warning("No config file found, using default config.")
         config = Config()
 
-    db = Database(DIRS.user_data_path / "db.sqlite", config=config)
-    set_db("default", db)
-    return db
-
-
-CURRENT_DATABASE: str = None
-DATABASES: dict[str, Database] = {}
-
-
-def get_db() -> Database:
-    """Get the current database instance."""
-    return DATABASES[CURRENT_DATABASE]
-
-
-def set_db(db_name: str, db: Database) -> Database:
-    """Set the current database instance."""
-    global CURRENT_DATABASE
-
-    if db_name in DATABASES:
-        raise ValueError(f"Database {db_name} already exists.")
-
-    DATABASES[db_name] = db
-    CURRENT_DATABASE = db_name
-
-    return db
-
-
-@contextmanager
-def temporary_db(db_name: str = "test", config: Config | None = None):
-    """Context manager to temporarily switch the database."""
-
-    global CURRENT_DATABASE
-    original_db = CURRENT_DATABASE
-    assert db_name not in DATABASES, f"Database {db_name} already exists."
-    if config is None:
-        config = Config()
-
-    try:
-        DATABASES[db_name] = Database(":memory:", config)
-        CURRENT_DATABASE = db_name
-        yield DATABASES[db_name]
-    finally:
-        CURRENT_DATABASE = original_db
-        DATABASES[db_name].db.close()
-        del DATABASES[db_name]
+    return Database(DIRS.user_data_path / "db.sqlite", config=config)

@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from constants import SYNC_PATTERN
 from core_types import AssetType, PartialAsset, PartialChunk, Task
 from logs import logger
-from storage import get_db
+from storage import Database
 from strategies.strategy import Module
 
 
@@ -26,13 +26,11 @@ class ChunkFromTextStrategy(Module[ChunkFromTextConfig]):
 
     CONFIG_TYPE = ChunkFromTextConfig
 
-    def __init__(self, config) -> None:
-        super().__init__(config)
+    def __init__(self, config, db: Database) -> None:
+        super().__init__(config, db)
 
     async def process_all(self, tasks: list[Task]) -> None:
-        db = get_db()
-
-        assets = db.get_assets([task.input_asset_id for task in tasks])
+        assets = self.db.get_assets([task.input_asset_id for task in tasks])
 
         for task, asset in zip(tasks, assets):
             assert asset.path is not None
@@ -41,7 +39,7 @@ class ChunkFromTextStrategy(Module[ChunkFromTextConfig]):
             chunks = self.chunk_text(text)
 
             try:
-                ids = db.create_chunks(
+                ids = self.db.create_chunks(
                     [
                         PartialChunk(
                             document_id=task.document_id,
@@ -57,7 +55,7 @@ class ChunkFromTextStrategy(Module[ChunkFromTextConfig]):
                 raise
 
             for chunk_id in ids:
-                db.create_asset(
+                self.db.create_asset(
                     PartialAsset(
                         document_id=task.document_id,
                         created_by_task_id=task.id,

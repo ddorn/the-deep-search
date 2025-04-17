@@ -5,7 +5,7 @@ from litellm import batch_completion
 from pydantic import BaseModel
 from yaml import safe_load
 
-from core_types import AssetType, PartialAsset, Task
+from core_types import AssetType, DocumentStructure, PartialAsset, Task
 from storage import Database
 from strategies.create_structure import Section
 from strategies.strategy import Module
@@ -36,14 +36,13 @@ class PrettyMarkdownStrategy(Module[PrettyMarkdownConfig]):
         assets = self.db.get_assets([task.input_asset_id for task in tasks])
 
         for task, asset in zip(tasks, assets, strict=True):
-            structure = Section.model_validate_json(asset.path.read_text())
+            structure = DocumentStructure.model_validate_json(asset.path.read_text())
             syncted_text_asset = self.db.get_assets_for_document(
                 asset.document_id, AssetType.SYNCED_TEXT_FILE
             )[0]
             syncted_text = syncted_text_asset.path.read_text()
 
-            sections = self.extract_content(structure, syncted_text)
-            flattened_sections = list(self.flatten_sections(sections))
+            flattened_sections = list(self.flat_section_texts(structure, syncted_text))
 
             prompts = [
                 [
@@ -83,44 +82,11 @@ class PrettyMarkdownStrategy(Module[PrettyMarkdownConfig]):
                 )
             )
 
-    # Find the content for each section
-    @staticmethod
-    def get_section_content(section: Section, text: str) -> str:
-        start_pos = text.find(section.start_sync_id)
-        if start_pos == -1:
-            raise ValueError(f"Start text not found for {section.title}")
-
-        if section.subsections:
-            end_pos = text.find(section.subsections[0].start_sync_id)
-        else:
-            end_pos = len(text)
-
-        return text[start_pos:end_pos]
-
-    def extract_content(self, section: Section, syncted_text: str) -> SectionWithContent:
-        section_content = self.get_section_content(section, syncted_text)
-
-        subsections = []
-        for i, subsection in enumerate(section.subsections):
-            if i == len(section.subsections) - 1:
-                next_text = syncted_text[syncted_text.find(subsection.start_sync_id) :]
-            else:
-                next_start = syncted_text.find(section.subsections[i + 1].start_sync_id)
-                next_text = syncted_text[syncted_text.find(subsection.start_sync_id) : next_start]
-
-            subsections.append(self.extract_content(subsection, next_text))
-
-        return SectionWithContent(
-            title=section.title,
-            section_content=section_content,
-            subsections=subsections,
-            start_sync_id=section.start_sync_id,
-        )
-
-    def flatten_sections(self, section: Section, depth: int = 1) -> Iterator[tuple[str, str]]:
+    def flat_section_texts(self, section: Section, text: str, depth: int = 1) -> Iterator[tuple[str, str]]:
         """Get the title and content of each section and its subsections, in a flat list."""
 
-        yield (f"{'#' * depth} {section.title}", section.section_content)
+        section_text = text[section.start_idx:section.proper_content_end_idx]
+        yield (f"{'#' * depth} {section.title}", section_text)
 
         for subsection in section.subsections:
-            yield from self.flatten_sections(subsection, depth + 1)
+            yield from self.flat_section_texts(subsection, text, depth + 1)

@@ -96,3 +96,10 @@ class Rule(BaseModel):
             return False
 
         return True
+
+class DocumentStructure(BaseModel):
+    title: str
+    start_idx: int
+    proper_content_end_idx: int
+    subsections_end_idx: int
+    subsections: list["DocumentStructure"]

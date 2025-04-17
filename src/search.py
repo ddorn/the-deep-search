@@ -10,7 +10,7 @@ from litellm import batch_completion
 from pydantic import BaseModel
 
 from constants import SYNC_PATTERN
-from core_types import Chunk, Document
+from core_types import AssetType, Chunk, Document, DocumentStructure
 from storage import Database
 from strategies.embed_chunks import EmbedChunksStrategy
 
@@ -24,7 +24,7 @@ class ChunkSearchResult(BaseModel):
     chunk: Chunk
     score: float
     nice_extract: str | None
-
+    path: list[str]
 
 class DocSearchResult(BaseModel):
     document: Document
@@ -63,6 +63,7 @@ class SearchEngine:
                 chunk=chunks[chunk_id].model_dump(),  # dump to avoid hot relaod problems
                 score=distances[self.chunk_to_idx[chunk_id]],
                 nice_extract=nice_extract,
+                path=self.get_chunk_path(chunks[chunk_id]),
             )
             for chunk_id, nice_extract in zip(top_chunks_ids, nice_extracts, strict=True)
         ]
@@ -123,6 +124,28 @@ Your response should:
         nice_extracts = [response.choices[0].message.content for response in responses]
 
         return nice_extracts
+
+    def get_chunk_path(self, chunk: Chunk) -> list[str]:
+        """Return a list of section titles that contain the chunk, if any."""
+        structure_assets = self.db.get_assets_for_document(chunk.document_id, AssetType.STRUCTURE)
+        syncted_text_assets = self.db.get_assets_for_document(chunk.document_id, AssetType.SYNCED_TEXT_FILE)
+        if not structure_assets or not syncted_text_assets:
+            return []
+
+        structure = DocumentStructure.model_validate_json(structure_assets[0].path.read_text())
+        chunk_start = syncted_text_assets[0].path.read_text().find(chunk.content)
+
+        assert chunk_start != -1, "Chunk not found in synced text??"
+
+        path = []
+        while structure.subsections:
+            for subsection in structure.subsections:
+                if chunk_start >= subsection.start_idx and chunk_start < subsection.subsections_end_idx:
+                    path.append(subsection.title)
+                    structure = subsection
+                    break
+
+        return path
 
     @lru_cache(maxsize=10_000)
     def embed(self, text: str):

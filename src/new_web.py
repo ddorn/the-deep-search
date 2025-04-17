@@ -10,13 +10,6 @@ from core_types import Asset, AssetType
 from search import DocSearchResult, SearchEngine
 from storage import setup_db
 
-st.set_page_config(
-    page_title="The Deep Search",
-    page_icon=":mag_right:",
-    layout="wide",
-    initial_sidebar_state="collapsed",
-)
-
 mark_linker = components.declare_component(
     "mark_linker",
     path="src/streamlit-components/mark_linker/mark_linker/frontend/build",
@@ -29,6 +22,15 @@ class UI:
         self.debug = False
 
     def main(self):
+
+        st.set_page_config(
+            page_title="The Deep Search",
+            page_icon=":mag_right:",
+            layout="wide",
+            initial_sidebar_state="collapsed",
+        )
+        self.debug = st.sidebar.checkbox("Dev debug", value=False)
+
         stats = search_engine.stats()
         st.write(
             f"Searching through **{stats.num_embeddings}** chunks for **{stats.num_documents}** documents."
@@ -41,7 +43,6 @@ class UI:
             )
         with nb_results_col:
             nb_results = st.number_input("Number of results", 1, 100, 5)
-            self.debug = st.checkbox("Dev debug", value=False)
 
         if query:
             results = self.search_engine.search(query, nb_results)
@@ -62,9 +63,14 @@ class UI:
             for chunk_result in doc_result.chunks:
                 content_col, button_col = st.columns([4, 1])
                 with content_col:
-                    st.markdown(
-                        f"**{chunk_result.score:.3f}** {chunk_result.nice_extract}"
-                    )
+                    text = ""
+                    if chunk_result.path:
+                        text += f"**{' > '.join(chunk_result.path)}** *{chunk_result.score:.3f}*\n\n"
+                    else:
+                        text += f"*{chunk_result.score:.3f}*\n\n"
+
+                    text += "> " + chunk_result.nice_extract
+                    st.markdown(text)
                     # st.markdown(chunk_result.chunk.content)
                 with button_col:
                     st.button(

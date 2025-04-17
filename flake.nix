@@ -104,7 +104,7 @@
         # It is of course perfectly OK to keep using an impure virtualenv workflow and only use uv2nix to build packages.
         # This devShell simply adds Python and undoes the dependency leakage done by Nixpkgs Python infrastructure.
         impure = pkgs.mkShell {
-          packages = [ python pkgs.uv pkgs.ffmpeg ];
+          packages = [ python pkgs.uv pkgs.ffmpeg pkgs.gnumake ];
           env = {
             # Prevent uv from managing Python downloads
             UV_PYTHON_DOWNLOADS = "never";

@@ -1,19 +1,18 @@
 # %%
 import asyncio
+import logging
 import os
 import shutil
-import yaml
 from pathlib import Path
 from typing import Annotated
 
 import typer
 from dotenv import load_dotenv
 from typer import Typer
-from config import Config
 
 from constants import DIRS
 from executor import Executor
-from logs import logger
+from logs import logger, setup_logging
 from storage import setup_db
 
 load_dotenv(override=True)
@@ -22,7 +21,15 @@ app = Typer(no_args_is_help=True, add_completion=False)
 
 
 @app.command()
-def main(config: Path = None, fresh: bool = False, no_sync: bool = False):
+def main(
+    config: Path = None,
+    fresh: bool = False,
+    no_sync: bool = False,
+    log_level: int = logging.DEBUG,
+    on_server: bool = False,
+):
+    setup_logging(log_level, is_server=on_server)
+
     if fresh:
         delete_all_data()
 
@@ -72,9 +79,7 @@ def reprocess_doc(doc_id: int):
 def delete_all_data():
     shutil.rmtree(DIRS.user_data_path)
     shutil.rmtree(DIRS.user_cache_path)
-    logger.warning(
-        f"Deleted all data in {DIRS.user_data_path} and {DIRS.user_cache_path}"
-    )
+    logger.warning(f"Deleted all data in {DIRS.user_data_path} and {DIRS.user_cache_path}")
 
 
 @app.command()

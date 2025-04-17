@@ -37,12 +37,12 @@ class PrettyMarkdownStrategy(Module[PrettyMarkdownConfig]):
 
         for task, asset in zip(tasks, assets, strict=True):
             structure = Section.model_validate_json(asset.path.read_text())
-            syncted_text_asset = self.db.get_assets_for_document(
+            synced_text_asset = self.db.get_assets_for_document(
                 asset.document_id, AssetType.SYNCED_TEXT_FILE
             )[0]
-            syncted_text = syncted_text_asset.path.read_text()
+            synced_text = synced_text_asset.path.read_text()
 
-            sections = self.extract_content(structure, syncted_text)
+            sections = self.extract_content(structure, synced_text)
             flattened_sections = list(self.flatten_sections(sections))
 
             prompts = [

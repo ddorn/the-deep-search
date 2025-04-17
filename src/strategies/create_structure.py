@@ -84,7 +84,9 @@ class CreateStructureStrategy(Module[CreateStructureConfig]):
             sources_regex = "|".join(re.escape(source) for source in self.config.sources)
             return rules + [
                 Rule(
-                    source=sources_regex, asset_type=AssetType.SYNCED_TEXT_FILE, strategy=self.NAME
+                    source=sources_regex,
+                    asset_type=AssetType.SYNCED_TEXT_FILE,
+                    strategy=self.NAME,
                 ),
             ]
         else:

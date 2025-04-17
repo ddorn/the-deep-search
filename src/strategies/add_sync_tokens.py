@@ -63,10 +63,13 @@ class AddSyncTokenStrategy(Module):
                 token_pos = start + space
                 end = start + space + 1
 
-            # Just cut it at the chunk size
+            # Don't add any token in the middle of words
             else:
-                token_pos = start + chunk_size
                 end = start + chunk_size
+                chunk = text[start:end]
+                parts.append(chunk)
+                start = end
+                continue
 
             chunk = text[start:token_pos]
             chunk_end = text[token_pos:end]

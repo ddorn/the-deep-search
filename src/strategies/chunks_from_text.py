@@ -21,7 +21,7 @@ class ChunkFromTextConfig(BaseModel):
 class ChunkFromTextStrategy(Module[ChunkFromTextConfig]):
     NAME = "chunk_from_text"
     PRIORITY = 0
-    MAX_BATCH_SIZE = 1
+    MAX_BATCH_SIZE = 100
     INPUT_ASSET_TYPE = AssetType.SYNCED_TEXT_FILE
 
     CONFIG_TYPE = ChunkFromTextConfig

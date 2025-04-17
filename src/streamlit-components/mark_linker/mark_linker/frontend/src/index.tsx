@@ -1,8 +1,6 @@
 import { Streamlit, RenderData } from "streamlit-component-lib"
 import { marked } from "marked"
 
-const COMPONENT_HEIGHT = 450
-
 Streamlit.events.addEventListener(Streamlit.RENDER_EVENT, (event: Event) => {
   const data = (event as CustomEvent<RenderData>).detail
   const $component = document.getElementById("component")!
@@ -14,12 +12,12 @@ Streamlit.events.addEventListener(Streamlit.RENDER_EVENT, (event: Event) => {
   // // we replace them with :mark=X:
   let markdown = data.args["markdown"].replace(
     /<sync-id="([^"]*)">/g,
-    ":mark=$1:"
+    " :mark=$1: "
   )
 
   let buffer = (marked(markdown) as string).replace(
-    /:mark=([^:]*):/g,
-    "<x-mark>$1</x-mark>"
+    / ?:mark=([^:]*): ?/g,
+    '<x-mark data-ts="$1"></x-mark>'
   )
   let doc = new DOMParser().parseFromString(buffer, "text/html")
 
@@ -33,9 +31,13 @@ Streamlit.events.addEventListener(Streamlit.RENDER_EVENT, (event: Event) => {
   let highlightedMark = data.args["highlighted_mark"]
   if (highlightedMark !== undefined) {
     let parentScrollPos = parent.document.documentElement.scrollTop
-    $component
-      .querySelector(`[data-timestamp="${highlightedMark}"]`)
-      ?.scrollIntoView({ block: "nearest" })
+    let $mark = $component.querySelector(`[data-ts="${highlightedMark}"]`)
+
+    if ($mark === null) {
+      throw new Error("Jumping to unknown mark")
+    } else {
+      $mark.scrollIntoView({ block: "nearest" })
+    }
     // Restore scroll pos
     parent.document.documentElement.scrollTop = parentScrollPos
   }
@@ -49,7 +51,10 @@ function processElement(
   current_mark: HTMLElement
 ): HTMLElement {
   if (el.nodeName === "X-MARK") {
-    return add_mark(el.innerText, current_mark.parentNode! as HTMLElement)
+    return add_mark(
+      el.dataset.ts as string,
+      current_mark.parentNode! as HTMLElement
+    )
   }
 
   if (el.textContent!.trim() === "") {
@@ -71,21 +76,21 @@ function processElement(
   // Clone el without children
   let new_el = el.cloneNode(false) as HTMLElement
   current_mark.parentNode!.appendChild(new_el)
-  let sub_mark = add_mark(current_mark.dataset.timestamp!, new_el)
+  let sub_mark = add_mark(current_mark.dataset.ts!, new_el)
 
   for (const child of el.childNodes) {
     sub_mark = processElement(child as HTMLElement, sub_mark)
   }
 
   return add_mark(
-    sub_mark.dataset.timestamp!,
+    sub_mark.dataset.ts!,
     current_mark.parentNode! as HTMLElement
   )
 }
 
 function add_mark(ts: string, parent: HTMLElement) {
   let mark = document.createElement("span")
-  mark.dataset.timestamp = ts
+  mark.dataset.ts = ts
   parent.appendChild(mark)
 
   return mark

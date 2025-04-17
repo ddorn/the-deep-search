@@ -62,7 +62,7 @@ class CreateStructureStrategy(Module[CreateStructureConfig]):
             text = asset.path.read_text()
 
             response = completion(
-                model="gemini/gemini-2.5-pro-preview-03-25",
+                model="gemini/gemini-2.5-pro-exp-03-25",
                 messages=[{"role": "system", "content": PROMPT}, {"role": "user", "content": text}],
                 response_format={"type": "json_object"},
             )

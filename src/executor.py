@@ -3,7 +3,7 @@ from collections import defaultdict
 from contextlib import ExitStack, contextmanager
 
 from config import Config
-from core_types import PartialTask, Rule, Task, TaskStatus
+from core_types import PartialTask, Rule, Task, TaskStatus, TaskType
 from logs import logger
 from sources import BUILT_IN_SOURCES
 from storage import Database
@@ -17,6 +17,55 @@ class Executor:
         self.strategies: dict[str, Module] = {}
         self.rules: list[Rule] = []
         self.db = db
+
+    async def main(self):
+
+        self.db.check_and_clean_database(prompt_user=True)
+
+        self.db.delete_tasks_that_should_be_deleted_at_shutdown()
+        self.db.restart_in_progress_tasks()
+        self.db.commit()
+
+        # Delete entries that are not in the new config
+        self.apply_config_changes(self.db.config)
+
+        # Load all strategies
+        for name, strategy_class in BUILT_IN_STRATEGIES.items():
+            raw_config = self.db.config.strategies.get(name, {})
+            parsed_config = strategy_class.CONFIG_TYPE.model_validate(raw_config)
+            self.strategies[name] = strategy_class(parsed_config, self.db)
+            self.rules = self.strategies[name].add_rules(self.rules)
+
+        # Load all sources
+        for name, source_config in self.db.config.sources.items():
+            source_class = BUILT_IN_SOURCES[source_config.type]
+            parsed_config = source_class.CONFIG_TYPE.model_validate(source_config.args)
+            assert name not in self.strategies, f"There is already a strategy named '{name}'. Use a different name for the source."
+            self.strategies[name] = source_class(parsed_config, self.db, name)
+            self.rules = self.strategies[name].add_rules(self.rules)
+
+        # Mount all sources & strategies
+        with self.mount_all():
+            self.db.commit()
+
+            # Run the main loop
+            while True:
+                self.create_tasks_from_unhandled_assets()
+                tasks = self.db.get_pending_tasks()
+                logger.debug(f"Found {len(tasks)} tasks to run")
+                if not tasks:
+                    await asyncio.sleep(1)
+                    continue
+
+                tasks_to_run = self.pick_tasks_to_run(tasks)
+                if not tasks_to_run:
+                    await asyncio.sleep(1)
+                    continue
+
+                await self.run_tasks(tasks_to_run)
+                self.db.commit()
+
+                await asyncio.sleep(0.1)
 
     def pick_tasks_to_run(self, tasks: list[Task]) -> list[Task]:
         assert tasks
@@ -49,64 +98,22 @@ class Executor:
         assert len(strategies) == 1, f"Tasks have different strategies: {strategies}"
         strategy = self.strategies[strategies.pop()]
 
-        logger.debug(f"Running {len(tasks)} tasks for strategy '{strategy.NAME}'")
+        logger.debug(f"Running {len(tasks)} tasks for strategy '{tasks[0].strategy}'")
         task_ids = [task.id for task in tasks]
         self.db.set_task_status(TaskStatus.IN_PROGRESS, task_ids)
         await strategy.process_all(tasks)
 
-        to_delete = [task.id for task in tasks if task.one_shot]
-        to_done = [task.id for task in tasks if not task.one_shot]
+        to_delete = []
+        to_done = []
+        for task in tasks:
+            if task.task_type in [TaskType.DELETE_ONCE_RUN, TaskType.DELETE_AT_SHUTDOWN]:
+                to_delete.append(task.id)
+            else:
+                to_done.append(task.id)
 
         self.db.set_task_status(TaskStatus.DONE, to_done)
         self.db.delete_tasks(to_delete)
 
-    async def main(self):
-
-        # Clean the database
-        self.db.clean_database()
-
-        # Delete entries that are not in the new config
-        self.apply_config_changes(self.db.config)
-
-        # Load all strategies
-        for name, strategy_class in BUILT_IN_STRATEGIES.items():
-            raw_config = self.db.config.strategies.get(name, {})
-            parsed_config = strategy_class.CONFIG_TYPE.model_validate(raw_config)
-            self.strategies[name] = strategy_class(parsed_config, self.db)
-            self.rules = self.strategies[name].add_rules(self.rules)
-
-        # Load all sources
-        for name, source_config in self.db.config.sources.items():
-            source_class = BUILT_IN_SOURCES[source_config.type]
-            parsed_config = source_class.CONFIG_TYPE.model_validate(source_config.args)
-            self.strategies[name] = source_class(parsed_config, self.db, name)
-            self.rules = self.strategies[name].add_rules(self.rules)
-
-        self.db.restart_crashed_tasks()
-        self.db.commit()
-
-        # Mount all sources & strategies
-        with self.mount_all():
-            self.db.commit()
-
-            # Run the main loop
-            while True:
-                self.create_tasks_from_unhandled_assets()
-                tasks = self.db.get_pending_tasks()
-                logger.debug(f"Found {len(tasks)} tasks to run")
-                if not tasks:
-                    await asyncio.sleep(1)
-                    continue
-
-                tasks_to_run = self.pick_tasks_to_run(tasks)
-                if not tasks_to_run:
-                    await asyncio.sleep(1)
-                    continue
-
-                await self.run_tasks(tasks_to_run)
-                self.db.commit()
-
-                await asyncio.sleep(0.1)
 
     @contextmanager
     def mount_all(self):

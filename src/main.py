@@ -2,12 +2,14 @@
 import asyncio
 import os
 import shutil
+import yaml
 from pathlib import Path
 from typing import Annotated
 
 import typer
 from dotenv import load_dotenv
 from typer import Typer
+from config import Config
 
 from constants import DIRS
 from executor import Executor
@@ -70,7 +72,9 @@ def reprocess_doc(doc_id: int):
 def delete_all_data():
     shutil.rmtree(DIRS.user_data_path)
     shutil.rmtree(DIRS.user_cache_path)
-    logger.warning(f"Deleted all data in {DIRS.user_data_path} and {DIRS.user_cache_path}")
+    logger.warning(
+        f"Deleted all data in {DIRS.user_data_path} and {DIRS.user_cache_path}"
+    )
 
 
 @app.command()

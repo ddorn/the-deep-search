@@ -4,6 +4,7 @@ from typing import Annotated
 
 from pydantic import BaseModel, Field
 from yaml import safe_load
+from slugify import slugify
 
 
 class GlobalConfig(BaseModel):

@@ -6,10 +6,10 @@ from pydantic import BaseModel
 
 from core_types import AssetType, PartialAsset
 from logs import logger
-from sources.fingerprinted_source import DocInfo, FingerprintedSource
+from sources.fingerprinted_source import DocInfo, FingerprintedSource, FingerprintedConfig
 
 
-class RssPodcastConfig(BaseModel):
+class RssPodcastConfig(FingerprintedConfig):
     feed: str
     after: datetime.datetime | None
 

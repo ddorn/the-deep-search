@@ -12,10 +12,10 @@ from pydantic import BaseModel
 
 from core_types import Asset, AssetType, PartialAsset, Rule
 from logs import logger
-from sources.fingerprinted_source import DocInfo, FingerprintedSource
+from sources.fingerprinted_source import DocInfo, FingerprintedSource, FingerprintedConfig
 
 
-class GDriveSourceConfig(BaseModel):
+class GDriveSourceConfig(FingerprintedConfig):
     folder_id: str
     service_account_file: Path
 

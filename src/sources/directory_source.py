@@ -5,16 +5,20 @@ from gitignore_filter import git_ignore_filter
 from pydantic import BaseModel
 
 from core_types import AssetType, PartialAsset
-from sources.fingerprinted_source import DocInfo, FingerprintedSource
+from sources.fingerprinted_source import (
+    DocInfo,
+    FingerprintedSource,
+    FingerprintedConfig,
+)
 
 
-class DirectorySourceConfig(BaseModel):
+class DirectorySourceConfig(FingerprintedConfig):
     # TODO:
     # Currently, this path can be relative,
     # But we assume it isn't for generating
     # URLs to the document.
     path: Path
-    ignore: str = ""
+    ignore: str = ".*"
 
 
 class DirectorySource(FingerprintedSource[DirectorySourceConfig]):

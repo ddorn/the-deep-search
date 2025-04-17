@@ -62,7 +62,9 @@ class UI:
             for chunk_result in doc_result.chunks:
                 content_col, button_col = st.columns([4, 1])
                 with content_col:
-                    st.markdown(f"**{chunk_result.score:.3f}** {chunk_result.nice_extract}")
+                    st.markdown(
+                        f"**{chunk_result.score:.3f}** {chunk_result.nice_extract}"
+                    )
                     # st.markdown(chunk_result.chunk.content)
                 with button_col:
                     st.button(
@@ -90,7 +92,9 @@ class UI:
 
         if self.debug:
             asset_type = st.radio(
-                "Asset type to show", [type_ for type_ in asset_by_type], horizontal=True
+                "Asset type to show",
+                [type_ for type_ in asset_by_type],
+                horizontal=True,
             )
             for asset in asset_by_type[asset_type]:
                 self.show_asset(asset)
@@ -142,7 +146,6 @@ class UI:
 
 
 if __name__ == "__main__":
-
     db = setup_db()
 
     @st.cache_resource  # So it is shared across sessions and reruns.

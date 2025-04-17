@@ -19,6 +19,7 @@ from core_types import (
     PartialTask,
     Task,
     TaskStatus,
+    TaskType,
 )
 from logs import logger
 
@@ -54,15 +55,16 @@ class Database:
 
     def create_task(self, task: PartialTask):
         cur = self.cursor.execute(
-            "INSERT INTO tasks (strategy, document_id, input_asset_id, status) VALUES (?, ?, ?, ?)",
+            "INSERT INTO tasks (strategy, document_id, input_asset_id, status, task_type, run_after) VALUES (?, ?, ?, ?, ?, ?)",
             (
                 task.strategy,
                 task.document_id,
                 task.input_asset_id,
                 task.status,
+                task.task_type,
+                task.run_after,
             ),
         )
-
         return cur.lastrowid
 
     def get_tasks(self, task_ids: list[int]) -> list[Task]:
@@ -74,7 +76,7 @@ class Database:
 
     def get_pending_tasks(self) -> list[Task]:
         tasks = self.cursor.execute(
-            "SELECT * FROM tasks WHERE status = ?",
+            "SELECT * FROM tasks WHERE status = ? AND (run_after IS NULL OR run_after < DATETIME('now', 'utc'))",
             (TaskStatus.PENDING,),
         ).fetchall()
         return [Task(**task) for task in tasks]
@@ -85,7 +87,9 @@ class Database:
             [status] + task_ids,
         )
 
-    def restart_crashed_tasks(self):
+    def restart_in_progress_tasks(self):
+        """Cleanly restart all tasks that are pending."""
+
         # Get all tasks that are in progress
         tasks = self.cursor.execute(
             "SELECT id FROM tasks WHERE status = ?",
@@ -117,6 +121,12 @@ class Database:
         self.cursor.execute(
             "DELETE FROM tasks WHERE id IN (%s)" % ",".join("?" * len(task_ids)),
             task_ids,
+        )
+
+    def delete_tasks_that_should_be_deleted_at_shutdown(self):
+        self.cursor.execute(
+            "DELETE FROM tasks WHERE task_type = ?",
+            (TaskType.DELETE_AT_SHUTDOWN,),
         )
 
     # -- Documents --
@@ -457,7 +467,7 @@ class Database:
 
     # -- Maintenance --
 
-    def clean_database(self):
+    def check_and_clean_database(self, prompt_user: bool = True):
         """
         Run a series of checks and fixes on the database.
         This prompts the user for confirmation before cleaning.
@@ -467,8 +477,8 @@ class Database:
         self.cursor.execute(
             """
             SELECT id FROM chunks WHERE id NOT IN (
-                SELECT DISTINCT CAST(content AS INTEGER) as chunk_id 
-                FROM assets 
+                SELECT DISTINCT CAST(content AS INTEGER) as chunk_id
+                FROM assets
                 WHERE type = 'chunk_id'
             )
         """
@@ -478,7 +488,7 @@ class Database:
             print(
                 f"Found {len(orphaned_chunks)} orphaned chunks: {[chunk['id'] for chunk in orphaned_chunks]}"
             )
-            if input("Delete them? (y/n): ") == "y":
+            if prompt_user and input("Delete them? (y/n): ") == "y":
                 self.cursor.execute(
                     "DELETE FROM chunks WHERE id IN (%s)" % ",".join("?" * len(orphaned_chunks)),
                     [chunk.id for chunk in orphaned_chunks],
@@ -560,7 +570,8 @@ class Database:
             strategy TEXT NOT NULL,
             status TEXT NOT NULL,
             input_asset_id INTEGER,
-            one_shot BOOLEAN DEFAULT FALSE,
+            run_after TIMESTAMP,
+            task_type TEXT NOT NULL,
 
             UNIQUE(input_asset_id, strategy),
             FOREIGN KEY(document_id) REFERENCES documents(id) ON DELETE CASCADE,

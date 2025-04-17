@@ -4,7 +4,7 @@ from pathlib import Path
 import aiohttp
 from pydantic import BaseModel
 
-from core_types import AssetType, PartialAsset, PartialTask, Task
+from core_types import AssetType, PartialAsset, PartialTask, Task, TaskType
 from logs import logger
 from strategies.compress_audio import CompressAudioInPlaceStrategy
 from strategies.strategy import Module
@@ -63,7 +63,7 @@ class DlAudioStrategy(Module[DlAudioConfig]):
                     document_id=task.document_id,
                     strategy=CompressAudioInPlaceStrategy.NAME,
                     input_asset_id=output_asset,
-                    one_shot=True,
+                    task_type=TaskType.DELETE_ONCE_RUN,
                 )
             )
 

@@ -1,11 +1,12 @@
 import abc
+import datetime
 import os
 from pathlib import Path
-from typing import Iterator
+from typing import Coroutine, Iterator
 
 from pydantic import BaseModel, Field
 
-from core_types import PartialAsset, PartialDocument
+from core_types import PartialAsset, PartialDocument, PartialTask, Task, TaskType
 from logs import logger
 from strategies.strategy import Source
 
@@ -17,9 +18,23 @@ class DocInfo(BaseModel):
     extra: dict = Field(default_factory=dict)
 
 
-class FingerprintedSource[ConfigType: BaseModel](Source[ConfigType]):
+class FingerprintedConfig(BaseModel):
+    sync_every_minutes: float = -1.0
+
+
+class FingerprintedSource[ConfigType: FingerprintedConfig](Source[ConfigType]):
+
+    MAX_BATCH_SIZE = 10_000
 
     def on_mount(self):
+        self.sync_source()
+
+    async def process_all(self, tasks: list[Task]):
+        # The tasks for this source is just to sync the source!
+        # If there are many tasks, we only need to sync once.
+        self.sync_source()
+
+    def sync_source(self):
         if os.getenv("DS_NO_SYNC"):
             return
 
@@ -54,6 +69,17 @@ class FingerprintedSource[ConfigType: BaseModel](Source[ConfigType]):
         # (Re)create documents
         for doc in to_create:
             self.on_new_document(doc)
+
+        # Add a task to sync again
+        if self.config.sync_every_minutes > 0:
+            self.db.create_task(PartialTask(
+                strategy=self.title,
+                document_id=None,
+                input_asset_id=None,
+                run_after=datetime.datetime.now(datetime.UTC) + datetime.timedelta(minutes=self.config.sync_every_minutes),
+                task_type=TaskType.DELETE_AT_SHUTDOWN,
+            ))
+
 
     def on_new_document(self, doc: DocInfo):
         document_id = self.db.create_document(

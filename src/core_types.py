@@ -17,14 +17,18 @@ class DBModel(BaseModel):
     id: int
     created_at: Annotated[datetime.datetime, Field(default_factory=datetime.datetime.now)]
 
+class TaskType(StrEnum):
+    PERSISTENT = "persistent"
+    DELETE_ONCE_RUN = "delete_once_run"
+    DELETE_AT_SHUTDOWN = "delete_at_shutdown"
 
 class PartialTask(BaseModel):
     strategy: str
-    document_id: int
-    input_asset_id: int
+    document_id: int | None
+    input_asset_id: int | None
     status: TaskStatus = TaskStatus.PENDING
-    one_shot: bool = False
-
+    task_type: TaskType = TaskType.PERSISTENT
+    run_after: datetime.datetime | None = None
 
 class Task(PartialTask, DBModel):
     pass

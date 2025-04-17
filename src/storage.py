@@ -330,10 +330,18 @@ class Database:
     # - embeddings.json: Keeps a mapping of chunk_id to index in the embeddings array
     # - embeddings.npy: The embedding array, shape (n_chunks, embedding_dim)
 
+    @property
+    def embeddings_path(self) -> Path:
+        return DIRS.user_data_path / "embeddings.npy"
+
+    @property
+    def embeddings_json_path(self) -> Path:
+        return DIRS.user_data_path / "embeddings.json"
+
     def load_embeddings(self) -> tuple[np.ndarray, dict[int, int]]:
         try:
-            embeddings = np.load(DIRS.user_data_path / "embeddings.npy")
-            chunk_to_idx = json.loads((DIRS.user_data_path / "embeddings.json").read_text())
+            embeddings = np.load(self.embeddings_path)
+            chunk_to_idx = json.loads(self.embeddings_json_path.read_text())
         except FileNotFoundError:
             logger.info("Embeddings files not found, creating empty embeddings.")
             embeddings = np.zeros(
@@ -351,8 +359,8 @@ class Database:
 
     def overwrite_embeddings_files(self, embeddings: np.ndarray, chunk_to_idx: dict[int, int]):
         assert len(embeddings) == len(chunk_to_idx), "Embeddings and chunk_to_idx length mismatch"
-        np.save(DIRS.user_data_path / "embeddings.npy", embeddings)
-        (DIRS.user_data_path / "embeddings.json").write_text(json.dumps(chunk_to_idx))
+        np.save(self.embeddings_path, embeddings)
+        self.embeddings_json_path.write_text(json.dumps(chunk_to_idx))
 
     def update_embeddings(self, chunk_ids: list[int], embeddings: np.ndarray):
         current_embeddings, chunk_to_idx = self.load_embeddings()

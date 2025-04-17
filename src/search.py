@@ -3,12 +3,14 @@ This module contains the logic for searching the database, with no dependencies 
 """
 
 import asyncio
+import time
 from collections import defaultdict
 from functools import lru_cache
 
 from litellm import batch_completion
 from pydantic import BaseModel
 
+from logs import logger
 from constants import SYNC_PATTERN
 from core_types import AssetType, Chunk, Document, DocumentStructure
 from storage import Database
@@ -40,6 +42,7 @@ class SearchEngine:
         self.db = db
         self.embeddings, self.chunk_to_idx = db.load_embeddings()
         self.idx_to_chunk = {v: k for k, v in self.chunk_to_idx.items()}
+        self.last_load_embeddings = time.time()
 
     def stats(self):
         return SearchStats(
@@ -49,6 +52,7 @@ class SearchEngine:
 
     def search_chunks(self, query: str, nb_results: int = 10) -> list[ChunkSearchResult]:
         embedding = self.embed(query)
+        self.reload_embeddings_if_changed()
 
         distances = self.embeddings @ embedding
         top_n = distances.argsort()[-nb_results:][::-1]
@@ -106,8 +110,9 @@ Your response should:
 - Include 1 or 2 full sentences
 - Include no additional text, introductions, or explanations
 - Preserve the exact wording from the original text
-- If there is no apparent relation between the chunk and the query, output the most informative sentence from the chunk
 - If some terms are especially relevant you can **bold** them using markdown.
+- If there is no apparent relation between the chunk and the query, output the most informative sentence from the chunk.
+- Always output a part of the text, never output comments on the tasks.
 """
 
         responses = batch_completion(
@@ -151,3 +156,11 @@ Your response should:
     def embed(self, text: str):
         embedding = asyncio.run(EmbedChunksStrategy(None, self.db).embed_texts([text]))[0]
         return embedding
+
+    def reload_embeddings_if_changed(self):
+        paths = [self.db.embeddings_path, self.db.embeddings_json_path]
+        if any(path.stat().st_mtime > self.last_load_embeddings for path in paths):
+            self.embeddings, self.chunk_to_idx = self.db.load_embeddings()
+            self.idx_to_chunk = {v: k for k, v in self.chunk_to_idx.items()}
+            self.last_load_embeddings = time.time()
+            logger.debug("Reloaded embeddings, as modified on disk.")

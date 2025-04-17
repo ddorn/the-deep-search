@@ -622,11 +622,14 @@ class Database:
 
 
 def setup_db(extra_path_for_config: Path | None = None) -> Database:
-    config_path = (
-        extra_path_for_config
-        if extra_path_for_config is not None and extra_path_for_config.exists()
-        else DIRS.user_config_path / "config.yaml"
-    )
+    config_path = None
+    if not extra_path_for_config:
+        config_path = DIRS.user_config_path / "config.yaml"
+    elif extra_path_for_config.exists():
+        config_path = extra_path_for_config
+    else:
+        logger.critical(f"No config file found at {extra_path_for_config}")
+        raise FileNotFoundError(f"No config file found at {extra_path_for_config}")
 
     if config_path.exists():
         config = load_config(config_path)

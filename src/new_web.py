@@ -10,6 +10,13 @@ from core_types import Asset, AssetType
 from search import DocSearchResult, SearchEngine
 from storage import setup_db
 
+st.set_page_config(
+    page_title="The Deep Search",
+    page_icon=":mag_right:",
+    layout="wide",
+    initial_sidebar_state="collapsed",
+)
+
 mark_linker = components.declare_component(
     "mark_linker",
     path="src/streamlit-components/mark_linker/mark_linker/frontend/build",
@@ -23,12 +30,6 @@ class UI:
 
     def main(self):
 
-        st.set_page_config(
-            page_title="The Deep Search",
-            page_icon=":mag_right:",
-            layout="wide",
-            initial_sidebar_state="collapsed",
-        )
         self.debug = st.sidebar.checkbox("Dev debug", value=False)
 
         stats = search_engine.stats()
@@ -69,7 +70,7 @@ class UI:
                 with content_col:
                     text = ""
                     if chunk_result.path:
-                        text += f"**{' > '.join(chunk_result.path)}** *{chunk_result.score:.3f}*\n\n"
+                        text += f"**{' ⟩ '.join(chunk_result.path)}** *{chunk_result.score:.3f}*\n\n"
                     else:
                         text += f"*{chunk_result.score:.3f}*\n\n"
 
@@ -128,9 +129,7 @@ class UI:
         if asset.type == AssetType.AUDIO_TO_DL:
             st.write(f"Audio: {asset.content}")
             st.audio(asset.content)
-        elif asset.type == AssetType.NICE_MARKDOWN:
-            st.markdown(asset.path.read_text())
-        elif asset.type == AssetType.SYNCED_TEXT_FILE:
+        elif asset.type in [AssetType.NICE_MARKDOWN, AssetType.SYNCED_TEXT_FILE]:
             mark_linker(markdown=asset.path.read_text(), highlighted_mark=mark)
             st.code(asset.path.read_text())
         elif asset.type == AssetType.STRUCTURE:

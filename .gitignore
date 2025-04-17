@@ -2,7 +2,7 @@
 # Python-generated files
 __pycache__/
 *.py[oc]
-build/
+#build/
 dist/
 wheels/
 *.egg-info
@@ -15,3 +15,6 @@ node_modules
 data/
 src/import.ipynb
 src/pairs.json
+
+# JS shit
+*.js.map

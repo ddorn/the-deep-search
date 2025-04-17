@@ -15,7 +15,7 @@ build-frontend:
     fi
 
 serve-frontend:
-	$(UV) run streamlit run src/new_web.py $(STREAMLIT_ARGS)
+	$(UV) run streamlit run src/new_web.py $(STREAMLIT_ARGS) 
 
 serve-backend:
-	$(UV) run src/main.py  main
+	$(UV) run src/main.py main --on-server --log-level 20

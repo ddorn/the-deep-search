@@ -622,22 +622,17 @@ class Database:
 
 
 def setup_db(extra_path_for_config: Path | None = None) -> Database:
-    paths_for_config = [
-        Path("config.yaml"),
-        Path(__file__).parent.parent / "data" / "config-simple.yaml",
-        # TODO: Define path where the config is searched for
-    ]
+    config_path = (
+        extra_path_for_config
+        if extra_path_for_config is not None and extra_path_for_config.exists()
+        else DIRS.user_config_path / "config.yaml"
+    )
 
-    if extra_path_for_config:
-        paths_for_config.insert(0, extra_path_for_config)
-
-    for path in paths_for_config:
-        if path.exists():
-            config = load_config(path)
-            logger.info(f"Using config file: {path.resolve()}")
-            break
+    if config_path.exists():
+        config = load_config(config_path)
+        logger.info(f"Using config file: {config_path.resolve()}")
     else:
-        logger.warning("No config file found, using default config.")
+        logger.warning(f"No config file found at {config_path}, using default config.")
         config = Config()
 
     return Database(DIRS.user_data_path / "db.sqlite", config=config)

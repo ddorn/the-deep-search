@@ -1,14 +1,15 @@
 import hashlib
 from pathlib import Path
+from typing import Annotated
 
 from gitignore_filter import git_ignore_filter
-from pydantic import BaseModel
+from pydantic import AfterValidator
 
 from core_types import AssetType, PartialAsset
 from sources.fingerprinted_source import (
     DocInfo,
-    FingerprintedSource,
     FingerprintedConfig,
+    FingerprintedSource,
 )
 
 
@@ -17,7 +18,7 @@ class DirectorySourceConfig(FingerprintedConfig):
     # Currently, this path can be relative,
     # But we assume it isn't for generating
     # URLs to the document.
-    path: Path
+    path: Annotated[Path, AfterValidator(lambda p: p.expanduser())]
     ignore: str = ".*"
 
 

@@ -49,7 +49,9 @@ class CreateStructureStrategy(Module[CreateStructureConfig]):
             sources_regex = "|".join(re.escape(source) for source in self.config.sources)
             return rules + [
                 Rule(
-                    source=sources_regex, asset_type=AssetType.SYNCED_TEXT_FILE, strategy=self.NAME
+                    source=sources_regex,
+                    asset_type=AssetType.SYNCED_TEXT_FILE,
+                    strategy=self.NAME,
                 ),
             ]
         else:
@@ -63,7 +65,10 @@ class CreateStructureStrategy(Module[CreateStructureConfig]):
 
             response = completion(
                 model="gemini/gemini-2.5-pro-exp-03-25",
-                messages=[{"role": "system", "content": PROMPT}, {"role": "user", "content": text}],
+                messages=[
+                    {"role": "system", "content": PROMPT},
+                    {"role": "user", "content": text},
+                ],
                 response_format={"type": "json_object"},
             )
 

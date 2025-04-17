@@ -99,7 +99,7 @@ class UI:
                 horizontal=True,
             )
             for asset in asset_by_type[asset_type]:
-                self.show_asset(asset)
+                self.show_asset(asset, mark)
 
         else:
             if document.url is not None:
@@ -116,13 +116,15 @@ class UI:
             if assets := asset_by_type.get(AssetType.NICE_MARKDOWN):
                 mark_linker(markdown=assets[0].path.read_text(), highlighted_mark=mark)
 
-    def show_asset(self, asset: Asset):
+    def show_asset(self, asset: Asset, mark: str):
         if asset.type == AssetType.AUDIO_TO_DL:
             st.write(f"Audio: {asset.content}")
             st.audio(asset.content)
         elif asset.type == AssetType.NICE_MARKDOWN:
-            # mark_linker(markdown=asset.path.read_text())
             st.markdown(asset.path.read_text())
+        elif asset.type == AssetType.SYNCED_TEXT_FILE:
+            mark_linker(markdown=asset.path.read_text(), highlighted_mark=mark)
+            st.code(asset.path.read_text())
         elif asset.type == AssetType.STRUCTURE:
             st.json(json.loads(asset.path.read_text()))
         elif asset.type == AssetType.AUDIO_FILE:

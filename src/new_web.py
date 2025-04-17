@@ -46,6 +46,10 @@ class UI:
         if query:
             results = self.search_engine.search(query, nb_results)
 
+            if len(results) == 0:
+                st.write("No results found")
+                st.stop()
+
             if self.selected_chunk is None:
                 self.selected_chunk = results[0].chunks[0].chunk.id
 
@@ -62,9 +66,7 @@ class UI:
             for chunk_result in doc_result.chunks:
                 content_col, button_col = st.columns([4, 1])
                 with content_col:
-                    st.markdown(
-                        f"**{chunk_result.score:.3f}** {chunk_result.nice_extract}"
-                    )
+                    st.markdown(f"**{chunk_result.score:.3f}** {chunk_result.nice_extract}")
                     # st.markdown(chunk_result.chunk.content)
                 with button_col:
                     st.button(

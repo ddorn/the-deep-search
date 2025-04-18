@@ -20,7 +20,7 @@ class Config(BaseModel):
     embedding_dimension: int = 1536
     paused_strategies: list[str] = []
 
-    storage_path: Annotated[Path, AfterValidator(lambda p: p.expanduser())] = DIRS.user_config_path
+    storage_path: Annotated[Path, AfterValidator(lambda p: p.expanduser())] = DIRS.user_data_path
 
 
 def load_config(path: Path) -> Config:

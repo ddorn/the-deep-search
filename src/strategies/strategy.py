@@ -63,7 +63,7 @@ class Module[ConfigType: BaseModel](abc.ABC):
 
     @cached_property
     def data_folder(self) -> Path:
-        folder = self.config.storage_path / "modules" / self.data_folder_name()
+        folder = self.db.config.storage_path / "modules" / self.data_folder_name()
         folder.mkdir(parents=True, exist_ok=True)
         return folder
 

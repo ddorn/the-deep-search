@@ -627,7 +627,7 @@ class Database:
         )
 
 
-def setup_db(extra_path_for_config: Path = None) -> Database:
+def setup_db(extra_path_for_config: Path | None = None) -> Database:
     paths_to_try = [
         Path("/var/lib/deepsearch/config.yaml"),
         DIRS.user_config_path / "config.yaml",
@@ -649,7 +649,7 @@ def setup_db(extra_path_for_config: Path = None) -> Database:
         config = load_config(config_path)
         logger.info(f"Using config file: {config_path.resolve()}")
     else:
-        logger.warning(f"No config file found at {config_path}, using default config.")
+        logger.warning(f"No config file found in any of {paths_to_try}, using default config.")
         config = Config()
 
     return Database(config.storage_path / "db.sqlite", config=config)

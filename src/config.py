@@ -22,6 +22,8 @@ class Config(BaseModel):
 
     storage_path: Annotated[Path, AfterValidator(lambda p: p.expanduser())] = DIRS.user_data_path
 
+    splash_text: str = "No results found"
+    search_placeholder: str = "Search for..."
 
 def load_config(path: Path) -> Config:
     with open(path, "r") as f:

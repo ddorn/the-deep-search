@@ -7,6 +7,7 @@ import time
 from collections import defaultdict
 
 from litellm import batch_completion
+import numpy as np
 from pydantic import BaseModel
 
 from logs import logger
@@ -84,16 +85,20 @@ class SearchEngine:
             num_documents=self.db.count_documents(),
         )
 
-    def search_chunks(self, query: str, nb_results: int = 10) -> list[ChunkSearchResult]:
+    def search_chunks(self, query: str, nb_results: int = 10, threshold: float = 0.2) -> list[ChunkSearchResult]:
         embedding = self.embed(query)
         self.reload_embeddings_if_changed()
-
         distances = self.embeddings @ embedding
-        top_n = distances.argsort()[-nb_results:][::-1]
+
+        # top_n = distances.argsort()[-nb_results:][::-1]
+        # top_chunks_ids = [self.idx_to_chunk[i] for i in top_n if distances[i] >= threshold]
+
+        indices = np.nonzero(distances >= threshold)[0]
+        top_n = indices[distances[indices].argsort()[-nb_results:][::-1]]
         top_chunks_ids = [self.idx_to_chunk[i] for i in top_n]
+
         top_chunks = self.db.get_chunks(top_chunks_ids)
         chunks = {chunk.id: chunk for chunk in top_chunks}
-
         nice_extracts = self.make_nice_extracts(top_chunks, query)
 
         return [
@@ -106,8 +111,8 @@ class SearchEngine:
             for chunk_id, nice_extract in zip(top_chunks_ids, nice_extracts, strict=True)
         ]
 
-    def search(self, query: str, nb_results: int = 10) -> list[DocSearchResult]:
-        chunks = self.search_chunks(query, nb_results)
+    def search(self, query: str, nb_results: int = 10, threshold: float = 0.2) -> list[DocSearchResult]:
+        chunks = self.search_chunks(query, nb_results, threshold)
 
         results_by_doc = defaultdict(list)
         for chunk in chunks:
@@ -128,8 +133,8 @@ class SearchEngine:
         return doc_results
 
     def make_nice_extracts(self, chunks: list[Chunk], query: str) -> list[str]:
-        return [chunk.content[:100] for chunk in chunks]
         text_cleaned = [SYNC_PATTERN.sub("", chunk.content) for chunk in chunks]
+        return text_cleaned
         return self._make_nice_extracts(query, *text_cleaned)
 
     @check_in_cache
@@ -184,6 +189,8 @@ Your response should:
                     path.append(subsection.title)
                     structure = subsection
                     break
+            else:
+                break  # No in any subsection, it's in the proper content
 
         return path
 

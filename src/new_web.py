@@ -1,14 +1,21 @@
+from contextlib import contextmanager
 import json
+import os
+from pathlib import Path
 import re
 from collections import defaultdict
+import time
 
 import streamlit as st
 import streamlit.components.v1 as components
+from dotenv import load_dotenv
 
 from constants import SYNC_PATTERN
 from core_types import Asset, AssetType
 from search import DocSearchResult, SearchEngine
 from storage import setup_db
+
+load_dotenv()
 
 st.set_page_config(
     page_title="The Deep Search",
@@ -33,23 +40,35 @@ class UI:
         self.debug = st.sidebar.checkbox("Dev debug", value=False)
 
         stats = search_engine.stats()
-        st.write(
+        st.sidebar.write(
             f"Searching through **{stats.num_embeddings}** chunks for **{stats.num_documents}** documents."
         )
 
-        q_col, nb_results_col = st.columns([3, 1])
-        with q_col:
+        with self.center_container(key="query"):
             query = st.text_input(
-                "Query", value="delete", on_change=self.select_chunk, args=(None,)
+                "Query", value="delete", on_change=self.select_chunk, args=(None,),
+                placeholder=self.search_engine.db.config.search_placeholder,
+                label_visibility="collapsed",
             )
-        with nb_results_col:
-            nb_results = st.number_input("Number of results", 1, 100, 5)
+
+        with st.sidebar:
+            nb_results = st.number_input("Max results", 1, 100, 10)
+            threshold = st.number_input("Threshold", 0.0, 1.0, 0.2)
 
         if query:
-            results = self.search_engine.search(query, nb_results)
+            with st.spinner("Searching..."):
+                start = time.time()
+                results = self.search_engine.search(query, nb_results, threshold)
+                end = time.time()
+
+            nb_results = sum(len(result.chunks) for result in results)
+            plural = "s" if nb_results != 1 else ""
+            st.write(f":grey[*Found {nb_results} result{plural} in {end - start:.2f} seconds.*]")
+            if nb_results == 0:
+                st.info("No results found. You can try to lower the threshold in the left sidebar, or try a different query.")
 
             if len(results) == 0:
-                st.write("No results found")
+                self.show_splash_message()
                 st.stop()
 
             if self.selected_chunk is None:
@@ -61,6 +80,9 @@ class UI:
 
             with doc_col:
                 self.show_selected_chunk()
+
+        else:
+            self.show_splash_message()
 
     def show_results(self, results: list[DocSearchResult]):
         for doc_result in results:
@@ -147,6 +169,36 @@ class UI:
         else:
             st.code(asset.content)
 
+    def show_splash_message(self):
+        extra_style = """div:has(.st-key-centered) { height: 100% !important; }"""
+        with self.center_container(extra_style=extra_style):
+            st.write(self.search_engine.db.config.splash_text)
+
+    def center_container(self, key: str="", extra_style: str=""):
+        style = """
+<style>
+    .st-key-centered{key} {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100%;
+    }
+    .st-key-centered{key} > div {
+        max-width: 500px !important;
+        width: 100%;
+    }
+    /* The first child of the centered container is the style, so we need to hide it */
+    .st-key-centered{key} > div:first-child {
+        display: none;
+    }
+    {extra_style}
+</style>
+""".replace("{key}", key).replace("{extra_style}", extra_style)
+
+        container = st.container(key=f"centered{key}")
+        container.write(style, unsafe_allow_html=True)
+        return container
+
     def select_chunk(self, chunk_id: int):
         self.selected_chunk = chunk_id
 
@@ -163,7 +215,11 @@ class UI:
 
 
 if __name__ == "__main__":
-    db = setup_db()
+    env_config_path = os.getenv("DS_CONFIG")
+    if env_config_path:
+        db = setup_db(Path(env_config_path))
+    else:
+        db = setup_db()
 
     @st.cache_resource  # So it is shared across sessions and reruns.
     def get_global_cache():

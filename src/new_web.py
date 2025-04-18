@@ -121,9 +121,9 @@ class UI:
         for asset in assets:
             asset_by_type[asset.type].append(asset)
 
-        st.write(f"### {document.title}")
 
         if self.debug:
+            st.write(f"### {document.title}")
             asset_type = st.radio(
                 "Asset type to show",
                 [type_ for type_ in asset_by_type],

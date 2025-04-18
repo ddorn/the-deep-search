@@ -134,7 +134,7 @@ class SearchEngine:
 
     def make_nice_extracts(self, chunks: list[Chunk], query: str) -> list[str]:
         text_cleaned = [SYNC_PATTERN.sub("", chunk.content) for chunk in chunks]
-        return text_cleaned
+        # return text_cleaned
         return self._make_nice_extracts(query, *text_cleaned)
 
     @check_in_cache
@@ -155,12 +155,27 @@ Your response should:
 - Always output a part of the text, never output comments on the tasks.
 """
 
+        PROMPT = """
+Act as a search result generator. Your task is to create a concise and
+informative extract (1-2 sentences) from the provided paragraph that
+directly addresses the user's query. The extract should function like a
+search result snippet, giving the user a preview of the paragraph's
+relevance to their query. The extract should be contiguous or use … between
+contiguous segments. You can use markdown **bold** to highlight specific
+terms that match the query strongly.
+Do not add information not present in the paragraph, output directly the extract.
+
+EDGE CASE: If the paragraph has no relation to the query, ignore the query, and
+output the most informative 1-2 sentences about the paragraph. Output directly
+the sentences, do not add any comment.
+"""
+
         responses = batch_completion(
             model="groq/llama-3.3-70b-versatile",
             messages=[
                 [
                     dict(role="system", content=PROMPT),
-                    dict(role="user", content=f"USER QUERY: {query}\nCHUNK: {text}\n"),
+                    dict(role="user", content=f"USER QUERY: {query}\nPARAGRAPH: {text}\n"),
                 ]
                 for text in texts
             ],

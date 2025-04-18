@@ -274,7 +274,7 @@ class Database:
             path = Path(asset["path"])
             if path and path.exists():
                 # Only if the file was produced by us: we DON'T want to delete user files.
-                if DIRS.user_data_path in path.resolve().parents:
+                if self.config.storage_path in path.resolve().parents:
                     logger.debug(f"Deleting asset file: '{path}'")
                     path.unlink()
 
@@ -332,11 +332,11 @@ class Database:
 
     @property
     def embeddings_path(self) -> Path:
-        return DIRS.user_data_path / "embeddings.npy"
+        return self.config.storage_path / "embeddings.npy"
 
     @property
     def embeddings_json_path(self) -> Path:
-        return DIRS.user_data_path / "embeddings.json"
+        return self.config.storage_path / "embeddings.json"
 
     def load_embeddings(self) -> tuple[np.ndarray, dict[int, int]]:
         try:
@@ -540,7 +540,7 @@ class Database:
             )
 
         if self.path != ":memory:":
-            backup_path = DIRS.user_data_path / f"database-backup-{self.version}.sqlite"
+            backup_path = self.config.storage_path / f"database-backup-{self.version}.sqlite"
             logger.info(f"Backing up the database to {backup_path} before migration.")
             shutil.copy(self.path, backup_path)
 
@@ -627,21 +627,29 @@ class Database:
         )
 
 
-def setup_db(extra_path_for_config: Path | None = None) -> Database:
+def setup_db(extra_path_for_config: Path = None) -> Database:
+    paths_to_try = [
+        Path("/var/lib/deepsearch/config.yaml"),
+        DIRS.user_config_path / "config.yaml",
+    ]
+
     config_path = None
     if not extra_path_for_config:
-        config_path = DIRS.user_config_path / "config.yaml"
+        for path in paths_to_try:
+            if path.exists():
+                config_path = path
+                break
     elif extra_path_for_config.exists():
         config_path = extra_path_for_config
     else:
         logger.critical(f"No config file found at {extra_path_for_config}")
         raise FileNotFoundError(f"No config file found at {extra_path_for_config}")
 
-    if config_path.exists():
+    if config_path:
         config = load_config(config_path)
         logger.info(f"Using config file: {config_path.resolve()}")
     else:
         logger.warning(f"No config file found at {config_path}, using default config.")
         config = Config()
 
-    return Database(DIRS.user_data_path / "db.sqlite", config=config)
+    return Database(config.storage_path / "db.sqlite", config=config)

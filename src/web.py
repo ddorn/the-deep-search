@@ -10,7 +10,7 @@ from litellm import batch_completion
 from millify import millify
 
 from config import load_config
-from constants import DIRS, SYNC_PATTERN
+from constants import SYNC_PATTERN
 from core_types import Asset, AssetType
 from storage import DATABASES, Database, set_db
 from strategies.embed_chunks import EmbedChunksStrategy
@@ -33,7 +33,7 @@ config = load_config(Path(config_path))
 
 # Load database
 DATABASES.clear()
-db = set_db("default", Database(DIRS.user_data_path / "db.sqlite", config=config))
+db = set_db("default", Database(config.storage_path / "db.sqlite", config=config))
 
 # Load embeddings
 embeddings, chunk_to_idx = db.load_embeddings()

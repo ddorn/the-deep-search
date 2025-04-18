@@ -6,7 +6,6 @@ from typing import ClassVar
 
 from openai import BaseModel
 
-from constants import DIRS
 from core_types import Rule, Task
 from storage import Database
 
@@ -64,7 +63,7 @@ class Module[ConfigType: BaseModel](abc.ABC):
 
     @cached_property
     def data_folder(self) -> Path:
-        folder = DIRS.user_data_path / "modules" / self.data_folder_name()
+        folder = self.config.storage_path / "modules" / self.data_folder_name()
         folder.mkdir(parents=True, exist_ok=True)
         return folder
 
@@ -99,7 +98,6 @@ class Module[ConfigType: BaseModel](abc.ABC):
 
 
 class Source[ConfigType: BaseModel](Module[ConfigType]):
-
     def __init__(self, config: ConfigType, db: Database, title: str):
         super().__init__(config, db)
         self.title = title

@@ -24,7 +24,8 @@ def setup_logging(log_level=logging.DEBUG, is_server: bool = False) -> logging.L
     logger.addHandler(rich_handler)
 
     if not is_server:
-        # Set up a file handler with detailed debug level messages
+        # TODO: Re-discuss if this should even exist.
+        # TODO: This should ideally use storage_path.
         file_handler = RotatingFileHandler(
             DIRS.user_log_path / "main.log", maxBytes=20 * 1024 * 1024, backupCount=20
         )

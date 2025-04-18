@@ -6,11 +6,6 @@ from pydantic import BaseModel, Field
 from yaml import safe_load
 
 
-class GlobalConfig(BaseModel):
-    embedding_dimension: int = 1536
-    paused_strategies: list[str] = []
-
-
 class SourceConfig(BaseModel):
     type: str
     args: dict
@@ -19,7 +14,11 @@ class SourceConfig(BaseModel):
 class Config(BaseModel):
     sources: Annotated[dict[str, SourceConfig], Field(default_factory=dict)]
     strategies: Annotated[dict[str, dict], Field(default_factory=dict)]
-    global_config: Annotated[GlobalConfig, Field(default_factory=GlobalConfig)]
+
+    embedding_dimension: int = 1536
+    paused_strategies: list[str] = []
+
+    storage_path: Path | None = None
 
 
 def load_config(path: Path) -> Config:

@@ -344,9 +344,7 @@ class Database:
             chunk_to_idx = json.loads(self.embeddings_json_path.read_text())
         except FileNotFoundError:
             logger.info("Embeddings files not found, creating empty embeddings.")
-            embeddings = np.zeros(
-                (0, self.config.global_config.embedding_dimension), dtype=np.float32
-            )
+            embeddings = np.zeros((0, self.config.embedding_dimension), dtype=np.float32)
             chunk_to_idx = {}
 
         # Saving ints as keys converts them to strings apparently -- we hide this.
@@ -368,7 +366,7 @@ class Database:
         # Make space for new chunks
         new_chunks = [chunk_id for chunk_id in chunk_ids if chunk_id not in chunk_to_idx]
         new_space = np.empty(
-            (len(new_chunks), self.config.global_config.embedding_dimension),
+            (len(new_chunks), self.config.embedding_dimension),
             dtype=np.float32,
         )
         current_embeddings = np.concatenate((current_embeddings, new_space), axis=0)

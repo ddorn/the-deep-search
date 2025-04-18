@@ -43,14 +43,12 @@ class EmbedChunksStrategy(Module):
 
     async def embed_texts(self, texts: list[str]) -> np.ndarray:
         response = await self.openai.embeddings.create(
-            dimensions=self.db.config.global_config.embedding_dimension,
+            dimensions=self.db.config.embedding_dimension,
             model="text-embedding-3-small",
             input=texts,
         )
 
-        embeddings = np.zeros(
-            (len(texts), self.db.config.global_config.embedding_dimension), dtype=np.float32
-        )
+        embeddings = np.zeros((len(texts), self.db.config.embedding_dimension), dtype=np.float32)
         for embedding in response.data:
             embeddings[embedding.index] = embedding.embedding
 

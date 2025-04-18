@@ -22,7 +22,9 @@ app = Typer(no_args_is_help=True, add_completion=False)
 
 @app.command()
 def main(
-    config: Annotated[Path, typer.Option(help="Path to the config file", envvar="DS_CONFIG")] = None,
+    config: Annotated[
+        Path, typer.Option(help="Path to the config file", envvar="DS_CONFIG")
+    ] = None,
     fresh: bool = False,
     no_sync: bool = False,
     log_level: int = logging.DEBUG,
@@ -78,8 +80,7 @@ def reprocess_doc(doc_id: int):
 @app.command()
 def delete_all_data():
     shutil.rmtree(DIRS.user_data_path)
-    shutil.rmtree(DIRS.user_cache_path)
-    logger.warning(f"Deleted all data in {DIRS.user_data_path} and {DIRS.user_cache_path}")
+    logger.warning(f"Deleted all data in {DIRS.user_data_path}")
 
 
 @app.command()

@@ -12,14 +12,12 @@ from strategies.strategy import Module
 
 
 class Executor:
-
     def __init__(self, db: Database) -> None:
         self.strategies: dict[str, Module] = {}
         self.rules: list[Rule] = []
         self.db = db
 
     async def main(self):
-
         self.db.check_and_clean_database(prompt_user=True)
 
         self.db.delete_tasks_that_should_be_deleted_at_shutdown()
@@ -40,7 +38,9 @@ class Executor:
         for name, source_config in self.db.config.sources.items():
             source_class = BUILT_IN_SOURCES[source_config.type]
             parsed_config = source_class.CONFIG_TYPE.model_validate(source_config.args)
-            assert name not in self.strategies, f"There is already a strategy named '{name}'. Use a different name for the source."
+            assert (
+                name not in self.strategies
+            ), f"There is already a strategy named '{name}'. Use a different name for the source."
             self.strategies[name] = source_class(parsed_config, self.db, name)
             self.rules = self.strategies[name].add_rules(self.rules)
 
@@ -76,7 +76,7 @@ class Executor:
 
         # Pick the highest priority strategy
         strategy = max(tasks_by_strategy.keys(), key=self.strategy_priority)
-        if strategy in self.db.config.global_config.paused_strategies:
+        if strategy in self.db.config.paused_strategies:
             logger.debug(f"Strategy '{strategy}' is paused, skipping")
             return []
 
@@ -85,7 +85,7 @@ class Executor:
         return batch_to_run
 
     def strategy_priority(self, strategy: str) -> int:
-        if strategy in self.db.config.global_config.paused_strategies:
+        if strategy in self.db.config.paused_strategies:
             return -9999
         return self.strategies[strategy].PRIORITY
 
@@ -106,14 +106,16 @@ class Executor:
         to_delete = []
         to_done = []
         for task in tasks:
-            if task.task_type in [TaskType.DELETE_ONCE_RUN, TaskType.DELETE_AT_SHUTDOWN]:
+            if task.task_type in [
+                TaskType.DELETE_ONCE_RUN,
+                TaskType.DELETE_AT_SHUTDOWN,
+            ]:
                 to_delete.append(task.id)
             else:
                 to_done.append(task.id)
 
         self.db.set_task_status(TaskStatus.DONE, to_done)
         self.db.delete_tasks(to_delete)
-
 
     @contextmanager
     def mount_all(self):

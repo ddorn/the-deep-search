@@ -119,11 +119,17 @@ class UI:
                     icon=":material/open_in_new:",
                 )
 
-            if AssetType.AUDIO_TO_DL in asset_by_type:
-                st.audio(asset_by_type[AssetType.AUDIO_TO_DL][0].content)
+            audio_container = st.empty()
 
             if assets := asset_by_type.get(AssetType.NICE_MARKDOWN):
-                mark_linker(markdown=assets[0].path.read_text(), highlighted_mark=mark)
+                mark_clicked = mark_linker(markdown=assets[0].path.read_text(), highlighted_mark=mark)
+                try:
+                    start_time = float(mark_clicked)
+                except (ValueError, TypeError):
+                    start_time = 0
+
+            if AssetType.AUDIO_TO_DL in asset_by_type:
+                audio_container.audio(asset_by_type[AssetType.AUDIO_TO_DL][0].content, start_time=start_time)
 
     def show_asset(self, asset: Asset, mark: str):
         if asset.type == AssetType.AUDIO_TO_DL:
@@ -160,11 +166,10 @@ if __name__ == "__main__":
     db = setup_db()
 
     @st.cache_resource  # So it is shared across sessions and reruns.
-    def get_search_engine():
-        return SearchEngine(db)
+    def get_global_cache():
+        return {}
 
-    search_engine = get_search_engine()
-    search_engine.db = db
+    search_engine = SearchEngine(db, get_global_cache())
 
     ui = UI(search_engine)
     ui.main()

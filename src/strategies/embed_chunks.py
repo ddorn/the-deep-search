@@ -16,6 +16,7 @@ class EmbedChunksStrategy(Module):
     def __init__(self, config, db: Database):
         super().__init__(config, db)
         self.openai = openai.AsyncClient()
+        self.openai_sync = openai.Client()
 
     async def process_all(self, tasks: list[Task]):
         assets = self.db.get_assets([task.input_asset_id for task in tasks])
@@ -48,7 +49,19 @@ class EmbedChunksStrategy(Module):
             input=texts,
         )
 
-        embeddings = np.zeros((len(texts), self.db.config.embedding_dimension), dtype=np.float32)
+        return self._response_to_embeddings(response)
+
+    def embed_texts_sync(self, texts: list[str]) -> np.ndarray:
+        response = self.openai_sync.embeddings.create(
+            dimensions=self.db.config.embedding_dimension,
+            model="text-embedding-3-small",
+            input=texts,
+        )
+
+        return self._response_to_embeddings(response)
+
+    def _response_to_embeddings(self, response) -> np.ndarray:
+        embeddings = np.zeros((len(response.data), self.db.config.embedding_dimension), dtype=np.float32)
         for embedding in response.data:
             embeddings[embedding.index] = embedding.embedding
 

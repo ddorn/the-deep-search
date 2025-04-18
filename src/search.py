@@ -2,10 +2,9 @@
 This module contains the logic for searching the database, with no dependencies on streamlit.
 """
 
-import asyncio
+import functools
 import time
 from collections import defaultdict
-from functools import lru_cache
 
 from litellm import batch_completion
 from pydantic import BaseModel
@@ -37,12 +36,47 @@ class DocSearchResult(BaseModel):
         return max(chunk.score for chunk in self.chunks)
 
 
+def check_in_cache(func):
+    """
+    Alternative to functools.cache, which uses self.cache as the cache, where self is the method's owner.
+    """
+    name = func.__name__
+
+    @functools.wraps(func)
+    def wrapper(self, *args, **kwargs):
+        key = (name, *args, *kwargs.items())
+        try:
+            return self.cache[key]
+        except KeyError:
+            ret = func(self, *args, **kwargs)
+            self.cache[key] = ret
+            return ret
+
+    return wrapper
+
+
 class SearchEngine:
-    def __init__(self, db: Database):
+    def __init__(self, db: Database, cache: dict):
         self.db = db
-        self.embeddings, self.chunk_to_idx = db.load_embeddings()
-        self.idx_to_chunk = {v: k for k, v in self.chunk_to_idx.items()}
+        self.cache = cache
+        # self.embeddings, self.chunk_to_idx = self.db.load_embeddings()
+        # self.idx_to_chunk = {v: k for k, v in self.chunk_to_idx.items()}
+        self.embeddings, self.chunk_to_idx, self.idx_to_chunk = self.get_embedding_and_mapping()
+
+    @property
+    def last_load_embeddings(self):
+        return self.cache.get("last_load_embeddings", 0)
+
+    @last_load_embeddings.setter
+    def last_load_embeddings(self, value):
+        self.cache["last_load_embeddings"] = value
+
+    @check_in_cache
+    def get_embedding_and_mapping(self):
+        embeddings, chunk_to_idx = self.db.load_embeddings()
+        idx_to_chunk = {v: k for k, v in chunk_to_idx.items()}
         self.last_load_embeddings = time.time()
+        return embeddings, chunk_to_idx, idx_to_chunk
 
     def stats(self):
         return SearchStats(
@@ -94,10 +128,11 @@ class SearchEngine:
         return doc_results
 
     def make_nice_extracts(self, chunks: list[Chunk], query: str) -> list[str]:
+        return [chunk.content[:100] for chunk in chunks]
         text_cleaned = [SYNC_PATTERN.sub("", chunk.content) for chunk in chunks]
         return self._make_nice_extracts(query, *text_cleaned)
 
-    @lru_cache(maxsize=10_000)
+    @check_in_cache
     def _make_nice_extracts(self, query: str, *texts: str) -> list[str]:
         PROMPT = """
 You are part of a search engine.  You see chunks of texts, which are the result of a search, and a user query.
@@ -152,15 +187,14 @@ Your response should:
 
         return path
 
-    @lru_cache(maxsize=10_000)
+    @check_in_cache
     def embed(self, text: str):
-        embedding = asyncio.run(EmbedChunksStrategy(None, self.db).embed_texts([text]))[0]
-        return embedding
+        return EmbedChunksStrategy(None, self.db).embed_texts_sync([text])[0]
 
     def reload_embeddings_if_changed(self):
         paths = [self.db.embeddings_path, self.db.embeddings_json_path]
         if any(path.stat().st_mtime > self.last_load_embeddings for path in paths):
-            self.embeddings, self.chunk_to_idx = self.db.load_embeddings()
-            self.idx_to_chunk = {v: k for k, v in self.chunk_to_idx.items()}
+            self.cache.pop(self.get_embedding_and_mapping.__name__, None)
+            self.embeddings, self.chunk_to_idx, self.idx_to_chunk = self.get_embedding_and_mapping()
             self.last_load_embeddings = time.time()
             logger.debug("Reloaded embeddings, as modified on disk.")

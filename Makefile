@@ -7,6 +7,9 @@ STREAMLIT_ARGS = --browser.gatherUsageStats false
 web:
 	$(UV) run streamlit run src/new_web.py --server.runOnSave true $(STREAMLIT_ARGS)
 
+main:
+	$(UV) run python src/main.py main
+
 build-frontend:
 	@if command -v pnpm > /dev/null; then \
 		cd $(FRONTEND_DIR); pnpm build; \
@@ -15,7 +18,7 @@ build-frontend:
     fi
 
 serve-frontend:
-	$(UV) run streamlit run src/new_web.py $(STREAMLIT_ARGS) 
+	$(UV) run streamlit run src/new_web.py $(STREAMLIT_ARGS)
 
 serve-backend:
 	$(UV) run src/main.py main --on-server --log-level 20

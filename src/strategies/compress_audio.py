@@ -41,6 +41,8 @@ class CompressAudioInPlaceStrategy(Module[CompressAudioInPlaceConfig]):
             "libmp3lame",
             "-q:a",
             str(self.config.level),
+            "-map_metadata", "0",  # Preserve metadata
+            "-map_chapters", "0",  # Preserve chapters
             "-y",
             str(output_path),
         ]

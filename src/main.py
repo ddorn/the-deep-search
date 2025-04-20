@@ -13,7 +13,8 @@ from typer import Typer
 from constants import DIRS
 from executor import Executor
 from logs import logger, setup_logging
-from storage import setup_db
+from config import setup_config
+from storage import Database
 
 load_dotenv(override=True)
 
@@ -29,6 +30,7 @@ def main(
     no_sync: bool = False,
     log_level: int = logging.DEBUG,
     on_server: bool = False,
+    config_override: Annotated[list[str], typer.Option(..., '-c', help="Override config values. Format: key=value")] = [],
 ):
     setup_logging(log_level, is_server=on_server)
 
@@ -38,7 +40,8 @@ def main(
     if no_sync:
         os.environ["DS_NO_SYNC"] = "1"
 
-    db = setup_db(extra_path_for_config=config)
+    config = setup_config(extra_path_for_config=config, overrides=config_override)
+    db = Database(config)
     asyncio.run(Executor(db).main())
 
 
@@ -55,7 +58,8 @@ def rerun_strategy(
 ):
     """Rerun the specified strategy."""
 
-    db = setup_db(extra_path_for_config=config)
+    config = setup_config(extra_path_for_config=config)
+    db = Database(config)
 
     strategies = set(
         task["strategy"]
@@ -73,7 +77,8 @@ def rerun_strategy(
 
 @app.command()
 def reprocess_doc(doc_id: int):
-    db = setup_db()
+    config = setup_config()
+    db = Database(config)
     db.delete_documents([doc_id])
 
 

@@ -25,9 +25,9 @@ from logs import logger
 
 
 class Database:
-    def __init__(self, path: str | Path, config: Config):
-        self.path = path
+    def __init__(self, config: Config):
         self.config = config
+        self.path = self.config.storage_path / "db.sqlite"
 
         logger.info(f"Using database at {self.path}")
         self.db = sqlite3.connect(self.path)
@@ -87,19 +87,46 @@ class Database:
             [status] + task_ids,
         )
 
+    def update_task(self, tasks: list[Task]):
+        """Update task records with all attributes from the provided Task objects."""
+        for task in tasks:
+            self.cursor.execute(
+                """UPDATE tasks SET
+                strategy = ?,
+                document_id = ?,
+                input_asset_id = ?,
+                status = ?,
+                task_type = ?,
+                run_after = ?,
+                retry_count = ?
+                WHERE id = ?""",
+                (
+                    task.strategy,
+                    task.document_id,
+                    task.input_asset_id,
+                    task.status,
+                    task.task_type,
+                    task.run_after,
+                    task.retry_count,
+                    task.id,
+                ),
+            )
     def restart_in_progress_tasks(self):
         """Cleanly restart all tasks that are pending."""
 
         # Get all tasks that are in progress
-        tasks = self.cursor.execute(
+        in_progress_tasks = self.cursor.execute(
             "SELECT id FROM tasks WHERE status = ?",
             (TaskStatus.IN_PROGRESS,),
         ).fetchall()
 
+        if not in_progress_tasks:
+            return
+
+
         # Delete all downstream tasks and assets, which might have been created
-        tasks_to_delete, assets_created = self.get_downstream_tasks_and_assets(
-            [task["id"] for task in tasks]
-        )
+        in_progress_task_ids = [task["id"] for task in in_progress_tasks]
+        tasks_to_delete, assets_created = self.get_downstream_tasks_and_assets(in_progress_task_ids)
         self._delete_assets_and_what_they_point_to(
             "id IN (%s)" % ",".join("?" * len(assets_created)),
             [asset.id for asset in assets_created],
@@ -111,11 +138,7 @@ class Database:
             [task.id for task in tasks_to_delete],
         )
 
-        # Restart the tasks
-        self.cursor.execute(
-            "UPDATE tasks SET status = ? WHERE status = ?",
-            (TaskStatus.PENDING, TaskStatus.IN_PROGRESS),
-        )
+        self.set_task_status(TaskStatus.PENDING, in_progress_task_ids)
 
     def delete_tasks(self, task_ids: list[int]):
         self.cursor.execute(
@@ -578,6 +601,7 @@ class Database:
             input_asset_id INTEGER,
             run_after TIMESTAMP,
             task_type TEXT NOT NULL,
+            retry_count INTEGER DEFAULT 0,
 
             UNIQUE(input_asset_id, strategy),
             FOREIGN KEY(document_id) REFERENCES documents(id) ON DELETE CASCADE,
@@ -626,30 +650,3 @@ class Database:
         )"""
         )
 
-
-def setup_db(extra_path_for_config: Path | None = None) -> Database:
-    paths_to_try = [
-        Path("/var/lib/deepsearch/config.yaml"),
-        DIRS.user_config_path / "config.yaml",
-    ]
-
-    config_path = None
-    if not extra_path_for_config:
-        for path in paths_to_try:
-            if path.exists():
-                config_path = path
-                break
-    elif extra_path_for_config.exists():
-        config_path = extra_path_for_config
-    else:
-        logger.critical(f"No config file found at {extra_path_for_config}")
-        raise FileNotFoundError(f"No config file found at {extra_path_for_config}")
-
-    if config_path:
-        config = load_config(config_path)
-        logger.info(f"Using config file: {config_path.resolve()}")
-    else:
-        logger.warning(f"No config file found in any of {paths_to_try}, using default config.")
-        config = Config()
-
-    return Database(config.storage_path / "db.sqlite", config=config)

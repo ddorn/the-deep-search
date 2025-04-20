@@ -11,7 +11,7 @@ class TaskStatus(StrEnum):
     PENDING = "pending"
     IN_PROGRESS = "in_progress"
     DONE = "done"
-
+    FAILED = "failed"
 
 class DBModel(BaseModel):
     id: int
@@ -29,6 +29,7 @@ class PartialTask(BaseModel):
     status: TaskStatus = TaskStatus.PENDING
     task_type: TaskType = TaskType.PERSISTENT
     run_after: datetime.datetime | None = None
+    retry_count: int = 0
 
 class Task(PartialTask, DBModel):
     pass

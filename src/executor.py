@@ -1,6 +1,7 @@
 import asyncio
 from collections import defaultdict
 from contextlib import ExitStack, contextmanager
+import datetime
 
 from config import Config
 from core_types import PartialTask, Rule, Task, TaskStatus, TaskType
@@ -101,21 +102,54 @@ class Executor:
         logger.debug(f"Running {len(tasks)} tasks for strategy '{tasks[0].strategy}'")
         task_ids = [task.id for task in tasks]
         self.db.set_task_status(TaskStatus.IN_PROGRESS, task_ids)
-        await strategy.process_all(tasks)
 
-        to_delete = []
-        to_done = []
-        for task in tasks:
-            if task.task_type in [
-                TaskType.DELETE_ONCE_RUN,
-                TaskType.DELETE_AT_SHUTDOWN,
-            ]:
-                to_delete.append(task.id)
-            else:
-                to_done.append(task.id)
+        try:
+            await strategy.process_all(tasks)
+            # Tasks completed successfully!
 
-        self.db.set_task_status(TaskStatus.DONE, to_done)
-        self.db.delete_tasks(to_delete)
+            tasks_to_delete = []
+            tasks_to_done = []
+
+            for task in tasks:
+                if task.task_type in [
+                    TaskType.DELETE_ONCE_RUN,
+                    TaskType.DELETE_AT_SHUTDOWN,
+                ]:
+                    tasks_to_delete.append(task.id)
+                else:
+                    tasks_to_done.append(task)
+
+            if tasks_to_done:
+                self.db.set_task_status(TaskStatus.DONE, [task.id for task in tasks_to_done])
+
+            if tasks_to_delete:
+                self.db.delete_tasks(tasks_to_delete)
+
+        except Exception as e:
+            if self.db.config.crash_on_task_failure:
+                raise
+
+            logger.exception(f"Error processing tasks for strategy '{tasks[0].strategy}'")
+
+            # Handle retries for failed tasks
+            for task in tasks:
+
+                if task.retry_count < self.db.config.task_retries:
+                    # Schedule for retry
+                    task.status = TaskStatus.PENDING
+                    task.run_after = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(
+                        seconds=self.db.config.task_retry_delay
+                    )
+                    logger.info(f"Task {task.id} scheduled for retry {task.retry_count}/{self.db.config.task_retries}")
+                else:
+                    # Mark as failed after max retries
+                    task.status = TaskStatus.FAILED
+                    logger.warning(f"Task {task.id} ({task.strategy}) exceeded retry limit ({self.db.config.task_retries}) and will not be retried")
+
+                task.retry_count += 1
+
+            # Update all tasks
+            self.db.update_tasks(tasks)
 
     @contextmanager
     def mount_all(self):

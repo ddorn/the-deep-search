@@ -25,8 +25,8 @@ class GDriveSource(FingerprintedSource[GDriveSourceConfig]):
     CONFIG_TYPE = GDriveSourceConfig
     MAX_BATCH_SIZE = 20
 
-    def __init__(self, config, title):
-        super().__init__(config, title)
+    def __init__(self, config, db, title):
+        super().__init__(config, db, title)
 
         self.credentials = service_account.Credentials.from_service_account_file(
             config.service_account_file,
@@ -196,6 +196,7 @@ def list_all_gdocs_fast(folder_id: str, credentials) -> list[DocInfo]:
                 urn=doc["id"],
                 title=doc["name"],
                 fingerprint=modified_time.isoformat(),
+                url=f"https://docs.google.com/document/d/{doc['id']}/edit",
             )
         )
 

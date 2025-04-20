@@ -13,7 +13,8 @@ from dotenv import load_dotenv
 from constants import SYNC_PATTERN
 from core_types import Asset, AssetType
 from search import DocSearchResult, SearchEngine
-from storage import setup_db
+from storage import Database
+from config import setup_config
 
 load_dotenv()
 
@@ -115,7 +116,11 @@ class UI:
         chunk = self.search_engine.db.get_chunks([self.selected_chunk])[0]
         document = self.search_engine.db.get_document(chunk.document_id)
         assets = self.search_engine.db.get_assets_for_document(document.id)
-        mark = re.search(SYNC_PATTERN, chunk.content).group("id")
+        match = re.search(SYNC_PATTERN, chunk.content)
+        if match:
+            mark = match.group("id")
+        else:
+            mark = None
 
         asset_by_type = defaultdict(list)
         for asset in assets:
@@ -217,9 +222,11 @@ class UI:
 if __name__ == "__main__":
     env_config_path = os.getenv("DS_CONFIG")
     if env_config_path:
-        db = setup_db(Path(env_config_path))
+        config = setup_config(Path(env_config_path))
     else:
-        db = setup_db()
+        config = setup_config()
+
+    db = Database(config)
 
     @st.cache_resource  # So it is shared across sessions and reruns.
     def get_global_cache():

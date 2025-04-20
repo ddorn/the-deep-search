@@ -15,6 +15,7 @@ class DocInfo(BaseModel):
     urn: str
     title: str
     fingerprint: str
+    url: str | None = None
     extra: dict = Field(default_factory=dict)
 
 
@@ -83,7 +84,7 @@ class FingerprintedSource[ConfigType: FingerprintedConfig](Source[ConfigType]):
 
     def on_new_document(self, doc: DocInfo):
         document_id = self.db.create_document(
-            PartialDocument(source_urn=doc.urn, source_id=self.title, title=doc.title)
+            PartialDocument(source_urn=doc.urn, source_id=self.title, title=doc.title, url=doc.url)
         )
         self.db.create_asset(self.mk_asset(document_id, doc))
 

@@ -30,7 +30,7 @@ def main(
     no_sync: bool = False,
     log_level: int = logging.DEBUG,
     on_server: bool = False,
-    config_override: Annotated[list[str], typer.Option(..., '-c', help="Override config values. Format: key=value")] = [],
+    config_override: Annotated[list[str], typer.Option(..., '-o', '--config-override', help="Override config values for the current run. Format: key.subkey=value")] = [],
 ):
     setup_logging(log_level, is_server=on_server)
 

@@ -6,13 +6,13 @@ import functools
 import time
 from collections import defaultdict
 
-from litellm import batch_completion
 import numpy as np
+from litellm import batch_completion
 from pydantic import BaseModel
 
-from logs import logger
 from constants import SYNC_PATTERN
 from core_types import AssetType, Chunk, Document, DocumentStructure
+from logs import logger
 from storage import Database
 from strategies.embed_chunks import EmbedChunksStrategy
 
@@ -27,6 +27,7 @@ class ChunkSearchResult(BaseModel):
     score: float
     nice_extract: str | None
     path: list[str]
+
 
 class DocSearchResult(BaseModel):
     document: Document
@@ -85,7 +86,9 @@ class SearchEngine:
             num_documents=self.db.count_documents(),
         )
 
-    def search_chunks(self, query: str, nb_results: int = 10, threshold: float = 0.2) -> list[ChunkSearchResult]:
+    def search_chunks(
+        self, query: str, nb_results: int = 10, threshold: float = 0.2
+    ) -> list[ChunkSearchResult]:
         embedding = self.embed(query)
         self.reload_embeddings_if_changed()
         distances = self.embeddings @ embedding
@@ -111,7 +114,9 @@ class SearchEngine:
             for chunk_id, nice_extract in zip(top_chunks_ids, nice_extracts, strict=True)
         ]
 
-    def search(self, query: str, nb_results: int = 10, threshold: float = 0.2) -> list[DocSearchResult]:
+    def search(
+        self, query: str, nb_results: int = 10, threshold: float = 0.2
+    ) -> list[DocSearchResult]:
         chunks = self.search_chunks(query, nb_results, threshold)
 
         results_by_doc = defaultdict(list)
@@ -188,7 +193,9 @@ the sentences, do not add any comment.
     def get_chunk_path(self, chunk: Chunk) -> list[str]:
         """Return a list of section titles that contain the chunk, if any."""
         structure_assets = self.db.get_assets_for_document(chunk.document_id, AssetType.STRUCTURE)
-        syncted_text_assets = self.db.get_assets_for_document(chunk.document_id, AssetType.SYNCED_TEXT_FILE)
+        syncted_text_assets = self.db.get_assets_for_document(
+            chunk.document_id, AssetType.SYNCED_TEXT_FILE
+        )
         if not structure_assets or not syncted_text_assets:
             return []
 
@@ -200,7 +207,10 @@ the sentences, do not add any comment.
         path = []
         while structure.subsections:
             for subsection in structure.subsections:
-                if chunk_start >= subsection.start_idx and chunk_start < subsection.subsections_end_idx:
+                if (
+                    chunk_start >= subsection.start_idx
+                    and chunk_start < subsection.subsections_end_idx
+                ):
                     path.append(subsection.title)
                     structure = subsection
                     break
@@ -215,7 +225,9 @@ the sentences, do not add any comment.
 
     def reload_embeddings_if_changed(self):
         paths = [self.db.embeddings_path, self.db.embeddings_json_path]
-        if any(path.stat().st_mtime > self.last_load_embeddings for path in paths):
+        if any(
+            path.exists() and path.stat().st_mtime > self.last_load_embeddings for path in paths
+        ):
             self.cache.pop(self.get_embedding_and_mapping.__name__, None)
             self.embeddings, self.chunk_to_idx, self.idx_to_chunk = self.get_embedding_and_mapping()
             self.last_load_embeddings = time.time()

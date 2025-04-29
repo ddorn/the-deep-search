@@ -1,20 +1,19 @@
-from contextlib import contextmanager
 import json
 import os
-from pathlib import Path
 import re
-from collections import defaultdict
 import time
+from collections import defaultdict
+from pathlib import Path
 
 import streamlit as st
 import streamlit.components.v1 as components
 from dotenv import load_dotenv
 
+from config import setup_config
 from constants import SYNC_PATTERN
 from core_types import Asset, AssetType
 from search import DocSearchResult, SearchEngine
 from storage import Database
-from config import setup_config
 
 load_dotenv()
 
@@ -37,7 +36,6 @@ class UI:
         self.debug = False
 
     def main(self):
-
         self.debug = st.sidebar.checkbox("Dev debug", value=False)
 
         stats = search_engine.stats()
@@ -47,7 +45,10 @@ class UI:
 
         with self.center_container(key="query"):
             query = st.text_input(
-                "Query", value="delete", on_change=self.select_chunk, args=(None,),
+                "Query",
+                value="delete",
+                on_change=self.select_chunk,
+                args=(None,),
                 placeholder=self.search_engine.db.config.search_placeholder,
                 label_visibility="collapsed",
             )
@@ -66,7 +67,9 @@ class UI:
             plural = "s" if nb_results != 1 else ""
             st.write(f":grey[*Found {nb_results} result{plural} in {end - start:.2f} seconds.*]")
             if nb_results == 0:
-                st.info("No results found. You can try to lower the threshold in the left sidebar, or try a different query.")
+                st.info(
+                    "No results found. You can try to lower the threshold in the left sidebar, or try a different query."
+                )
 
             if len(results) == 0:
                 self.show_splash_message()
@@ -80,7 +83,24 @@ class UI:
                 self.show_results(results)
 
             with doc_col:
-                self.show_selected_chunk()
+                with st.container(key="fixeddoc"):
+                    st.markdown(
+                        """
+                        <style>
+                        .st-key-fixeddoc {
+                            position: fixed;
+                            height: 80%;
+                            overflow: scroll;
+                            }
+                        .stColumn:has(div > div > div > div > div > .st-key-fixeddoc) { 
+                            position: relative;
+                        }
+                    </style>
+
+                    """,
+                        unsafe_allow_html=True,
+                    )
+                    self.show_selected_chunk()
 
         else:
             self.show_splash_message()
@@ -93,7 +113,9 @@ class UI:
                 with content_col:
                     text = ""
                     if chunk_result.path:
-                        text += f"**{' ⟩ '.join(chunk_result.path)}** *{chunk_result.score:.3f}*\n\n"
+                        text += (
+                            f"**{' ⟩ '.join(chunk_result.path)}** *{chunk_result.score:.3f}*\n\n"
+                        )
                     else:
                         text += f"*{chunk_result.score:.3f}*\n\n"
 
@@ -126,7 +148,6 @@ class UI:
         for asset in assets:
             asset_by_type[asset.type].append(asset)
 
-
         if self.debug:
             st.write(f"### {document.title}")
             asset_type = st.radio(
@@ -149,14 +170,19 @@ class UI:
             audio_container = st.empty()
 
             if assets := asset_by_type.get(AssetType.NICE_MARKDOWN):
-                mark_clicked = mark_linker(markdown=assets[0].path.read_text(), highlighted_mark=mark)
+                mark_clicked = mark_linker(
+                    markdown=assets[0].path.read_text(), highlighted_mark=mark
+                )
                 try:
                     start_time = float(mark_clicked)
                 except (ValueError, TypeError):
                     start_time = 0
 
             if AssetType.AUDIO_TO_DL in asset_by_type:
-                audio_container.audio(asset_by_type[AssetType.AUDIO_TO_DL][0].content, start_time=start_time)
+                audio_container.audio(
+                    asset_by_type[AssetType.AUDIO_TO_DL][0].content,
+                    start_time=start_time,
+                )
 
     def show_asset(self, asset: Asset, mark: str):
         if asset.type == AssetType.AUDIO_TO_DL:
@@ -170,16 +196,16 @@ class UI:
         elif asset.type == AssetType.AUDIO_FILE:
             st.write(f"Audio at {asset.path}")
         elif asset.path is not None:
-            st.code(asset.path.read_text())
+            st.code(asset.path.read_text() * 10)
         else:
-            st.code(asset.content)
+            st.code(asset.content * 10)
 
     def show_splash_message(self):
         extra_style = """div:has(.st-key-centered) { height: 100% !important; }"""
         with self.center_container(extra_style=extra_style):
             st.write(self.search_engine.db.config.splash_text)
 
-    def center_container(self, key: str="", extra_style: str=""):
+    def center_container(self, key: str = "", extra_style: str = ""):
         style = """
 <style>
     .st-key-centered{key} {
@@ -198,7 +224,11 @@ class UI:
     }
     {extra_style}
 </style>
-""".replace("{key}", key).replace("{extra_style}", extra_style)
+""".replace(
+            "{key}", key
+        ).replace(
+            "{extra_style}", extra_style
+        )
 
         container = st.container(key=f"centered{key}")
         container.write(style, unsafe_allow_html=True)

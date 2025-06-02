@@ -68,6 +68,84 @@ class Section(BaseModel):
     subsections: list["Section"]
 
 
+def create_document_structure(
+    text: str,
+    document_title: str | None = None,
+    model: str = "gemini/gemini-2.5-pro-preview-03-25"
+) -> DocumentStructure:
+    """
+    Create a document structure from text using LLM to extract sections.
+
+    Args:
+        text: The input text to process
+        document_title: Optional title hint for the document
+        model: The LLM model to use for section extraction
+
+    Returns:
+        The extracted document structure
+    """
+    if document_title:
+        hint = f"\n\nHint: The document title is {document_title}."
+    else:
+        hint = ""
+
+    response = completion(
+        model=model,
+        messages=[{"role": "system", "content": PROMPT + hint}, {"role": "user", "content": text}],
+        response_format={"type": "json_object"},
+    )
+
+    content = response.choices[0].message.content
+    sections = Section.model_validate_json(content)
+    return build_document_structure(sections, text, 0)
+
+
+def build_document_structure(section: Section, synced_text: str, text_start: int) -> DocumentStructure:
+    """
+    Build a DocumentStructure from a Section and the corresponding text.
+
+    Args:
+        section: The section to convert
+        synced_text: The text content
+        text_start: The starting position offset in the full text
+
+    Returns:
+        The built DocumentStructure
+    """
+    start = synced_text.find(section.start_sync_id)
+    if start == -1:
+        raise ValueError(f"Start text not found for {section.title}")
+
+    if section.subsections:
+        end = synced_text.find(section.subsections[0].start_sync_id)
+    else:
+        end = len(synced_text)
+
+    subsections = []
+    for i, subsection in enumerate(section.subsections):
+        subsection_start = synced_text.find(subsection.start_sync_id)
+        if i == len(section.subsections) - 1:
+            subsection_text = synced_text[subsection_start:]
+        else:
+            next_start = synced_text.find(section.subsections[i + 1].start_sync_id)
+            subsection_text = synced_text[subsection_start:next_start]
+
+        subsections.append(build_document_structure(subsection, subsection_text, subsection_start + text_start))
+
+    if section.subsections:
+        subsections_end_idx = max(subsection.subsections_end_idx for subsection in subsections)
+    else:
+        subsections_end_idx = end + text_start
+
+    return DocumentStructure(
+        title=section.title,
+        start_idx=start + text_start,
+        proper_content_end_idx=end + text_start,
+        subsections_end_idx=subsections_end_idx,
+        subsections=subsections,
+    )
+
+
 class CreateStructureConfig(BaseModel):
     sources: list[str] = []
 
@@ -99,20 +177,7 @@ class CreateStructureStrategy(Module[CreateStructureConfig]):
             text = asset.path.read_text()
 
             document = self.db.get_document(asset.document_id)
-            if document.title:
-                hint = f"\n\nHint: The document title is {document.title}."
-            else:
-                hint = ""
-
-            response = completion(
-                model="gemini/gemini-2.5-pro-preview-03-25",
-                messages=[{"role": "system", "content": PROMPT + hint}, {"role": "user", "content": text}],
-                response_format={"type": "json_object"},
-            )
-
-            content = response.choices[0].message.content
-            sections = Section.model_validate_json(content)
-            document_structure = self.build_document_structure(sections, text, 0)
+            document_structure = create_document_structure(text, document.title)
 
             path = self.path_for_asset("structure", f"{asset.document_id}.json")
             path.write_text(document_structure.model_dump_json())
@@ -125,37 +190,3 @@ class CreateStructureStrategy(Module[CreateStructureConfig]):
                     path=path,
                 )
             )
-
-    def build_document_structure(self, section: Section, syncted_text: str, text_start: int) -> DocumentStructure:
-        start = syncted_text.find(section.start_sync_id)
-        if start == -1:
-            raise ValueError(f"Start text not found for {section.title}")
-
-        if section.subsections:
-            end = syncted_text.find(section.subsections[0].start_sync_id)
-        else:
-            end = len(syncted_text)
-
-        subsections = []
-        for i, subsection in enumerate(section.subsections):
-            subsection_start = syncted_text.find(subsection.start_sync_id)
-            if i == len(section.subsections) - 1:
-                subsection_text = syncted_text[subsection_start:]
-            else:
-                next_start = syncted_text.find(section.subsections[i + 1].start_sync_id)
-                subsection_text = syncted_text[subsection_start:next_start]
-
-            subsections.append(self.build_document_structure(subsection, subsection_text, subsection_start + text_start))
-
-        if section.subsections:
-            subsections_end_idx = max(subsection.subsections_end_idx for subsection in subsections)
-        else:
-            subsections_end_idx = end + text_start
-
-        return DocumentStructure(
-            title=section.title,
-            start_idx=start + text_start,
-            proper_content_end_idx=end + text_start,
-            subsections_end_idx=subsections_end_idx,
-            subsections=subsections,
-        )

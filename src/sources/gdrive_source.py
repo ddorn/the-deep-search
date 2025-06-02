@@ -3,12 +3,12 @@ import datetime
 import re
 from asyncio import Task
 from pathlib import Path
-from typing import Iterator
+from typing import Annotated, Iterator
 
 import aiohttp
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from core_types import Asset, AssetType, PartialAsset, Rule
 from logs import logger
@@ -16,14 +16,17 @@ from sources.fingerprinted_source import DocInfo, FingerprintedSource, Fingerpri
 
 
 class GDriveSourceConfig(FingerprintedConfig):
-    folder_id: str
-    service_account_file: Path
+    folder_id: Annotated[str, Field(description="Google Drive folder ID. It is the last part of the URL when you open the folder in your browser. For example, if the URL is https://drive.google.com/drive/folders/1a2b3c4d5e6f7g8h9i0j, the folder ID is 1a2b3c4d5e6f7g8h9i0j.")]
+    service_account_file: Annotated[Path, Field(description="Path to a service account JSON file that has access to the folder.")]
 
 
 class GDriveSource(FingerprintedSource[GDriveSourceConfig]):
     NAME = "google-drive"
     CONFIG_TYPE = GDriveSourceConfig
     MAX_BATCH_SIZE = 20
+
+    DISPLAY_NAME = "Google Drive Folder"
+    DESCRIPTION = "Indexes all google docs in a given folder."
 
     def __init__(self, config, db, title):
         super().__init__(config, db, title)

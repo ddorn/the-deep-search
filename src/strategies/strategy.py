@@ -24,6 +24,9 @@ class Module[ConfigType: BaseModel](abc.ABC):
     PRIORITY: ClassVar[int] = 0
     INPUT_ASSET_TYPE: ClassVar[str | None] = None
 
+    DESCRIPTION: ClassVar[str] = "No description provided."
+    DISPLAY_NAME: ClassVar[str] = "No display name provided."
+
     def __init__(self, config: ConfigType, db: Database):
         self.config = config
         self.db = db

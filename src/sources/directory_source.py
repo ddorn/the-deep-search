@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Annotated
 
 from gitignore_filter import git_ignore_filter
-from pydantic import AfterValidator
+from pydantic import AfterValidator, Field
 
 from core_types import AssetType, PartialAsset
 from sources.fingerprinted_source import (
@@ -13,18 +13,22 @@ from sources.fingerprinted_source import (
 )
 
 
+
 class DirectorySourceConfig(FingerprintedConfig):
     # TODO:
     # Currently, this path can be relative,
     # But we assume it isn't for generating
     # URLs to the document.
-    path: Annotated[Path, AfterValidator(lambda p: p.expanduser())]
-    ignore: str = ".*"
+    path: Annotated[Path, Field(description="Root path to the folder containing the documents you want to index."), AfterValidator(lambda p: p.expanduser())]
+    ignore: Annotated[str, Field(format="multiline", description="Patterns in .gitignore format to ignore files and directories.")] = ".*"
 
 
 class DirectorySource(FingerprintedSource[DirectorySourceConfig]):
     NAME = "local-files"
     CONFIG_TYPE = DirectorySourceConfig
+
+    DISPLAY_NAME = "Local Folder"
+    DESCRIPTION = "Indexes all files in a given folder, filtered by .gitignore patterns."
 
     def list_documents(self):
         for path in git_ignore_filter(

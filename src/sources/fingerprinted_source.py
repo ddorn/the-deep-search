@@ -2,7 +2,7 @@ import abc
 import datetime
 import os
 from pathlib import Path
-from typing import Coroutine, Iterator
+from typing import Annotated, Coroutine, Iterator
 
 from pydantic import BaseModel, Field
 
@@ -20,7 +20,7 @@ class DocInfo(BaseModel):
 
 
 class FingerprintedConfig(BaseModel):
-    sync_every_minutes: float = -1.0
+    sync_every_minutes: Annotated[float, Field(description="Pull changes every X minutes. If 0, sync is done only when the app starts.")] = 0
 
 
 class FingerprintedSource[ConfigType: FingerprintedConfig](Source[ConfigType]):

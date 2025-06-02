@@ -1,8 +1,9 @@
 import datetime
 import time
+from typing import Annotated
 
 import feedparser
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from core_types import AssetType, PartialAsset
 from logs import logger
@@ -10,13 +11,16 @@ from sources.fingerprinted_source import DocInfo, FingerprintedSource, Fingerpri
 
 
 class RssPodcastConfig(FingerprintedConfig):
-    feed: str
-    after: datetime.datetime | None
+    feed: Annotated[str, Field(description="RSS feed URL")]
+    after: Annotated[datetime.datetime | None, Field(description="Optional: only include podcast released after this date")] = None
 
 
 class RssPodcastSource(FingerprintedSource[RssPodcastConfig]):
     NAME = "rss-podcast"
     CONFIG_TYPE = RssPodcastConfig
+
+    DISPLAY_NAME = "Podcasts from an RSS feed"
+    DESCRIPTION = "Indexes podcasts from a given RSS feed and transcribes them."
 
     def list_documents(self):
         feed = feedparser.parse(self.config.feed)

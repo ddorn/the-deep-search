@@ -92,7 +92,7 @@ class UI:
                             height: 80%;
                             overflow: scroll;
                             }
-                        .stColumn:has(div > div > div > div > div > .st-key-fixeddoc) { 
+                        .stColumn:has(div > div > div > div > div > .st-key-fixeddoc) {
                             position: relative;
                         }
                     </style>
@@ -168,15 +168,14 @@ class UI:
                 )
 
             audio_container = st.empty()
+            start_time = 0  # We have the true value only after mark_linker returns it
 
-            if assets := asset_by_type.get(AssetType.NICE_MARKDOWN):
-                mark_clicked = mark_linker(
-                    markdown=assets[0].path.read_text(), highlighted_mark=mark
-                )
+            if assets := (asset_by_type.get(AssetType.NICE_MARKDOWN) or asset_by_type.get(AssetType.SYNCED_TEXT_FILE)):
+                mark_clicked = mark_linker(markdown=assets[0].path.read_text(), highlighted_mark=mark)
                 try:
                     start_time = float(mark_clicked)
                 except (ValueError, TypeError):
-                    start_time = 0
+                    pass
 
             if AssetType.AUDIO_TO_DL in asset_by_type:
                 audio_container.audio(

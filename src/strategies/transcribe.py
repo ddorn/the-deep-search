@@ -250,3 +250,25 @@ class TranscribeStrategy(Module[TranscribeStrategyConfig]):
         )
 
         return True
+
+
+if __name__ == "__main__":
+    import sys
+
+    if len(sys.argv) != 2:
+        print("Usage: python transcribe.py <audio_file>")
+        sys.exit(1)
+    file = sys.argv[1]
+
+    if not Path(file).exists():
+        print(f"File {file} does not exist")
+        sys.exit(1)
+
+    db = None
+    config = TranscribeStrategyConfig()
+    strategy = TranscribeStrategy(config, db)
+
+    transcript_data = asyncio.run(strategy.chunked_transcribe(Path(file)))
+
+    transcript = "".join([s.text for s in transcript_data.segments])
+    print(transcript)
